@@ -5,14 +5,12 @@ import { getAuth } from 'firebase/auth'
 // Substitua pelos dados do SEU projeto Firebase.
 // Console: https://console.firebase.google.com -> Configurações do projeto -> Seus apps -> SDK setup and configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBkeTViMZ0oIW25mEXbfvqh6zcesSsHqmQ",
-  authDomain: "controle-hora-extra.firebaseapp.com",
-  databaseURL: "https://controle-hora-extra-default-rtdb.firebaseio.com",
-  projectId: "controle-hora-extra",
-  storageBucket: "controle-hora-extra.firebasestorage.app",
-  messagingSenderId: "27997142099",
-  appId: "1:220962335637:web:784a4a0a03d3cbcb6aa49c",
-  measurementId: "G-F0QTEB9N7R"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "YOUR_API_KEY",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "YOUR_PROJECT.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "YOUR_PROJECT.appspot.com",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "YOUR_SENDER_ID",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "YOUR_APP_ID"
 }
 
 const app = initializeApp(firebaseConfig)
