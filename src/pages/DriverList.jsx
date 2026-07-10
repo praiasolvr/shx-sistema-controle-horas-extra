@@ -30,7 +30,7 @@ export default function DriverList() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
           <p className="text-xs font-mono uppercase tracking-wide text-slate mb-1">Cadastro</p>
@@ -74,6 +74,8 @@ export default function DriverList() {
                 <th className="px-5 py-3 font-medium">Nome</th>
                 <th className="px-5 py-3 font-medium">Matrícula</th>
                 <th className="px-5 py-3 font-medium">Empresa</th>
+                <th className="px-5 py-3 font-medium">Função / veículo</th>
+                <th className="px-5 py-3 font-medium">Telefone</th>
                 <th className="px-5 py-3 font-medium font-mono">Limite mensal</th>
                 <th className="px-5 py-3"></th>
               </tr>
@@ -90,6 +92,8 @@ export default function DriverList() {
                   <td className="px-5 py-3">
                     <EmpresaBadge empresa={driver.empresa} />
                   </td>
+                  <td className="px-5 py-3 text-slate">{driver.role || '—'}</td>
+                  <td className="px-5 py-3 text-slate">{driver.phone || '—'}</td>
                   <td className="px-5 py-3 font-mono">{formatHours(driver.maxHours)}</td>
                   <td className="px-5 py-3 text-right whitespace-nowrap">
                     <button

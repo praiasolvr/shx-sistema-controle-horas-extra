@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { parseCSV, rowsToDrivers } from '../utils/csv'
 import { EMPRESAS } from '../utils/constants'
 
-const TEMPLATE_HEADERS = ['Nome', 'Matricula', 'Empresa','Limite']
+const TEMPLATE_HEADERS = ['Nome', 'Matricula', 'Empresa', 'Funcao', 'Telefone', 'Limite']
 const TEMPLATE_EXAMPLE = ['João da Silva', '00123', 'Praia Sol', 'Carreta 04', '(11) 90000-0000', '20']
 
 export default function ImportDriversModal({ onClose, onImport }) {
@@ -105,13 +105,15 @@ export default function ImportDriversModal({ onClose, onImport }) {
             <p className="text-sm font-medium mb-2">
               Pré-visualização ({rows.length} motorista{rows.length === 1 ? '' : 's'})
             </p>
-            <div className="max-h-64 overflow-y-auto border border-line rounded-lg">
-              <table className="w-full text-xs">
+            <div className="max-h-64 overflow-auto border border-line rounded-lg">
+              <table className="w-full text-xs min-w-[560px]">
                 <thead className="bg-cloud sticky top-0">
                   <tr className="text-left">
                     <th className="px-3 py-2 font-medium">Nome</th>
                     <th className="px-3 py-2 font-medium">Matrícula</th>
                     <th className="px-3 py-2 font-medium">Empresa</th>
+                    <th className="px-3 py-2 font-medium">Função</th>
+                    <th className="px-3 py-2 font-medium">Telefone</th>
                     <th className="px-3 py-2 font-medium">Limite</th>
                   </tr>
                 </thead>
@@ -126,6 +128,8 @@ export default function ImportDriversModal({ onClose, onImport }) {
                           <span className="text-amber-dark"> (confira)</span>
                         )}
                       </td>
+                      <td className="px-3 py-1.5">{r.role || '—'}</td>
+                      <td className="px-3 py-1.5">{r.phone || '—'}</td>
                       <td className="px-3 py-1.5">{r.maxHours || '0'}</td>
                     </tr>
                   ))}

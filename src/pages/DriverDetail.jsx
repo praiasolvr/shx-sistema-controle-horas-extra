@@ -32,7 +32,7 @@ export default function DriverDetail() {
 
   if (!driver) {
     return (
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
         <p className="text-slate">Motorista não encontrado.</p>
         <Link to="/motoristas" className="text-ink underline">
           Voltar para a lista
@@ -49,7 +49,7 @@ export default function DriverDetail() {
   const meta = STATUS_META[usage.status]
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
       <Link to="/motoristas" className="text-sm text-slate hover:text-ink">
         ← Motoristas
       </Link>

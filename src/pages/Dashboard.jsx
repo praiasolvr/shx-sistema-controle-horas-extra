@@ -9,13 +9,17 @@ import DriverCard from '../components/DriverCard'
 import EmpresaBadge from '../components/EmpresaBadge'
 import AlertBanner from '../components/AlertBanner'
 import RouteProgress from '../components/RouteProgress'
+import WhatsAppAlertModal from '../components/WhatsAppAlertModal'
 
 export default function Dashboard() {
   const { drivers, loading: loadingDrivers } = useDrivers()
   const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers)
   const [empresaFilter, setEmpresaFilter] = useState('Todas')
+  const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState('cards')
+  const [exportScope, setExportScope] = useState('todos') // 'todos' | 'comHoras'
   const [exporting, setExporting] = useState(false)
+  const [showWhatsApp, setShowWhatsApp] = useState(false)
 
   const computed = useMemo(() => {
     return drivers.map((driver) => {
@@ -26,10 +30,16 @@ export default function Dashboard() {
     })
   }, [drivers, entriesByDriver])
 
-  const filtered =
-    empresaFilter === 'Todas'
-      ? computed
-      : computed.filter((c) => c.driver.empresa === empresaFilter)
+  const filtered = computed
+    .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
+    .filter((c) => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (
+        c.driver.name.toLowerCase().includes(q) ||
+        (c.driver.matricula || '').toLowerCase().includes(q)
+      )
+    })
 
   const sorted = [...filtered].sort((a, b) => b.usage.percent - a.usage.percent)
 
@@ -40,17 +50,19 @@ export default function Dashboard() {
   const loading = loadingDrivers || loadingEntries
 
   async function handleExport(type) {
+    const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
+    const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
     setExporting(true)
     try {
-      if (type === 'excel') await exportExcel(sorted, empresaFilter)
-      else await exportPDF(sorted, empresaFilter)
+      if (type === 'excel') await exportExcel(rows, label)
+      else await exportPDF(rows, label)
     } finally {
       setExporting(false)
     }
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
           <p className="text-xs font-mono uppercase tracking-wide text-slate mb-1">
@@ -58,48 +70,41 @@ export default function Dashboard() {
           </p>
           <h1 className="font-display text-3xl font-semibold">Painel geral</h1>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleExport('excel')}
-            disabled={exporting || sorted.length === 0}
-            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
-          >
-            Exportar Excel
-          </button>
-          <button
-            onClick={() => handleExport('pdf')}
-            disabled={exporting || sorted.length === 0}
-            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
-          >
-            Exportar PDF
-          </button>
-          <Link
-            to="/lancar-horas"
-            className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-ink/90 transition"
-          >
-            + Lançar horas
-          </Link>
-        </div>
+        <Link
+          to="/lancar-horas"
+          className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-ink/90 transition"
+        >
+          + Lançar horas
+        </Link>
       </div>
 
       <AlertBanner alertedDrivers={alertedDrivers} />
 
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1">
-          {['Todas', ...EMPRESAS].map((option) => (
-            <button
-              key={option}
-              onClick={() => setEmpresaFilter(option)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                empresaFilter === option ? 'bg-ink text-white' : 'text-slate hover:text-ink'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
+      {/* Filtros */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+        <div className="flex flex-col sm:flex-row gap-2 flex-1">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar motorista por nome ou matrícula"
+            className="w-full sm:max-w-xs rounded-lg border border-line px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink/20"
+          />
+          <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
+            {['Todas', ...EMPRESAS].map((option) => (
+              <button
+                key={option}
+                onClick={() => setEmpresaFilter(option)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition whitespace-nowrap ${
+                  empresaFilter === option ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1">
+        <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
           <button
             onClick={() => setViewMode('cards')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
@@ -115,6 +120,52 @@ export default function Dashboard() {
             }`}
           >
             Lista
+          </button>
+        </div>
+      </div>
+
+      {/* Exportação e WhatsApp */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
+        <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setExportScope('todos')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
+              exportScope === 'todos' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setExportScope('comHoras')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
+              exportScope === 'comHoras' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+            }`}
+          >
+            Somente c/ hora extra
+          </button>
+        </div>
+
+        <div className="flex gap-2 sm:ml-auto flex-wrap">
+          <button
+            onClick={() => handleExport('excel')}
+            disabled={exporting || sorted.length === 0}
+            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
+          >
+            Exportar Excel
+          </button>
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={exporting || sorted.length === 0}
+            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
+          >
+            Exportar PDF
+          </button>
+          <button
+            onClick={() => setShowWhatsApp(true)}
+            disabled={alertedDrivers.length === 0}
+            className="bg-signal text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-signal/90 transition disabled:opacity-40"
+          >
+            Avisar por WhatsApp{alertedDrivers.length > 0 ? ` (${alertedDrivers.length})` : ''}
           </button>
         </div>
       </div>
@@ -164,7 +215,7 @@ export default function Dashboard() {
                     key={driver.id}
                     className="border-b border-line last:border-0 hover:bg-cloud/50"
                   >
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 whitespace-nowrap">
                       <Link to={`/motoristas/${driver.id}`} className="font-medium hover:underline">
                         {driver.name}
                       </Link>
@@ -179,13 +230,17 @@ export default function Dashboard() {
                     <td className="px-5 py-3">
                       <RouteProgress percent={usage.percent} status={usage.status} compact />
                     </td>
-                    <td className={`px-5 py-3 font-medium ${meta.text}`}>{meta.label}</td>
+                    <td className={`px-5 py-3 font-medium whitespace-nowrap ${meta.text}`}>{meta.label}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+      )}
+
+      {showWhatsApp && (
+        <WhatsAppAlertModal alertedDrivers={alertedDrivers} onClose={() => setShowWhatsApp(false)} />
       )}
     </div>
   )
