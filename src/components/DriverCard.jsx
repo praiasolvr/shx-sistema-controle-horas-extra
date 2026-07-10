@@ -1,9 +1,16 @@
 import { Link } from 'react-router-dom'
 import RouteProgress from './RouteProgress'
 import EmpresaBadge from './EmpresaBadge'
-import { formatHours } from '../utils/hours'
 
-export default function DriverCard({ driver, totalHours, usage }) {
+export default function DriverCard({ driver, totalHoursStr, usage }) {
+  // Função auxiliar rápida para garantir que o limite também apareça como relógio (ex: 40:00)
+  const formatarLimite = (decimal) => {
+    if (!decimal || decimal <= 0) return '00:00'
+    const h = Math.floor(decimal)
+    const m = Math.round((decimal - h) * 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
   return (
     <Link
       to={`/motoristas/${driver.id}`}
@@ -22,8 +29,9 @@ export default function DriverCard({ driver, totalHours, usage }) {
           </p>
         </div>
         <div className="text-right font-mono shrink-0 ml-3">
-          <p className="text-lg font-semibold leading-none">{formatHours(totalHours)}</p>
-          <p className="text-[11px] text-slate mt-1">de {formatHours(driver.maxHours)}</p>
+          {/* Exibe diretamente a string formatada em HH:MM vinda do Dashboard */}
+          <p className="text-lg font-semibold leading-none">{totalHoursStr}h</p>
+          <p className="text-[11px] text-slate mt-1">de {formatarLimite(driver.maxHours)}h</p>
         </div>
       </div>
       <RouteProgress percent={usage.percent} status={usage.status} />

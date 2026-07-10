@@ -1,7 +1,13 @@
 import { STATUS_META } from '../utils/hours'
 
 export default function RouteProgress({ percent, status, compact = false }) {
-  const meta = STATUS_META[status]
+  // Busca o meta correspondente. Se não achar, cria um fallback seguro para não quebrar a tela
+  const meta = STATUS_META[status] || {
+    color: '#64748b', // Cinza slate padrão
+    text: 'text-slate',
+    label: 'Normal'
+  }
+  
   const clampedForBar = Math.min(percent, 100)
 
   return (

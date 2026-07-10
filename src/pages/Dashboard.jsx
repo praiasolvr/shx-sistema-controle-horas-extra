@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDrivers } from '../hooks/useDrivers'
 import { useAllEntries } from '../hooks/useAllEntries'
-import { getUsage, monthLabel, sumHours, filterEntriesByMonth, formatHours, STATUS_META } from '../utils/hours'
+import { getUsage, monthLabel, filterEntriesByMonth, STATUS_META } from '../utils/hours'
 import { EMPRESAS } from '../utils/constants'
 import { exportExcel, exportPDF } from '../utils/export'
 import DriverCard from '../components/DriverCard'
@@ -21,12 +21,47 @@ export default function Dashboard() {
   const [exporting, setExporting] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
 
+  // Função utilitária local para formatar o decimal em relógio HH:MM de forma precisa
+  const formatarParaRelogio = (decimal) => {
+    if (!decimal || decimal <= 0) return '00:00'
+    const h = Math.floor(decimal)
+    const m = Math.round((decimal - h) * 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
   const computed = useMemo(() => {
     return drivers.map((driver) => {
       const monthEntries = filterEntriesByMonth(entriesByDriver[driver.id] || [])
-      const totalHours = sumHours(monthEntries)
-      const usage = getUsage(totalHours, driver.maxHours)
-      return { driver, totalHours, usage }
+      
+      let minutos75 = 0
+      let minutos100 = 0
+
+      // Separação dia a dia baseada em minutos para evitar problemas com floats
+      monthEntries.forEach((entry) => {
+        const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
+        const limite2HorasEmMinutos = 2 * 60 // 120 minutos
+
+        if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
+          minutos75 += brutoDiaEmMinutos
+        } else {
+          minutos75 += limite2HorasEmMinutos
+          minutos100 += (brutoDiaEmMinutos - limite2HorasEmMinutos)
+        }
+      })
+
+      const total75Decimal = minutos75 / 60
+      const total100Decimal = minutos100 / 60
+      // O total acumulado faturado que o motorista de fato possui no mês (75 + 100)
+      const totalFaturadoDecimal = total75Decimal + total100Decimal
+
+      const usage = getUsage(totalFaturadoDecimal, driver.maxHours)
+
+      return { 
+        driver, 
+        totalHours: totalFaturadoDecimal, // Mantemos decimal para lógica de filtros/gráficos
+        totalHoursStr: formatarParaRelogio(totalFaturadoDecimal), // Formato legível HH:MM
+        usage 
+      }
     })
   }, [drivers, entriesByDriver])
 
@@ -189,8 +224,14 @@ export default function Dashboard() {
 
       {!loading && sorted.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map(({ driver, totalHours, usage }) => (
-            <DriverCard key={driver.id} driver={driver} totalHours={totalHours} usage={usage} />
+          {sorted.map(({ driver, totalHours, totalHoursStr, usage }) => (
+            <DriverCard 
+              key={driver.id} 
+              driver={driver} 
+              totalHours={totalHours} // Mantém prop original se o DriverCard precisar do float interno
+              totalHoursStr={totalHoursStr} // Passa a string formatada em HH:MM se necessário
+              usage={usage} 
+            />
           ))}
         </div>
       )}
@@ -208,7 +249,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map(({ driver, totalHours, usage }) => {
+              {sorted.map(({ driver, totalHoursStr, usage }) => {
                 const meta = STATUS_META[usage.status]
                 return (
                   <tr
@@ -221,11 +262,11 @@ export default function Dashboard() {
                       </Link>
                     </td>
                     <td className="px-5 py-3">
-                      <EmpresaBadge empresa={driver.empresa} />
+                      <ThemeBadge empresa={driver.empresa} />
                     </td>
                     <td className="px-5 py-3 font-mono whitespace-nowrap">
-                      {formatHours(totalHours)}{' '}
-                      <span className="text-slate">/ {formatHours(driver.maxHours)}</span>
+                      {totalHoursStr}h{' '}
+                      <span className="text-slate">/ {formatarParaRelogio(driver.maxHours)}h</span>
                     </td>
                     <td className="px-5 py-3">
                       <RouteProgress percent={usage.percent} status={usage.status} compact />

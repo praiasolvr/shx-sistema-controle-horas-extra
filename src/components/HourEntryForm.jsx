@@ -1,30 +1,65 @@
-import { useState } from 'react'
-
-function todayISO() {
-  const d = new Date()
-  return d.toISOString().slice(0, 10)
-}
+import { useState, useMemo } from 'react'
 
 export default function HourEntryForm({ onAdd }) {
-  const [date, setDate] = useState(todayISO())
-  const [hours, setHours] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
   const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  async function handleSubmit(e) {
+  // Calcula apenas as horas brutas trabalhadas no período escolhido
+  const resumoPeriodo = useMemo(() => {
+    if (!startTime || !endTime) return null
+
+    const [startH, startM] = startTime.split(':').map(Number)
+    const [endH, endM] = endTime.split(':').map(Number)
+    
+    let totalMinutos = (endH * 60 + endM) - (startH * 60 + startM)
+
+    // Suporte caso a jornada passe da meia-noite
+    if (totalMinutos < 0) {
+      totalMinutos += 24 * 60
+    }
+
+    const horasDecimais = totalMinutos / 60
+    const h = Math.floor(horasDecimais)
+    const m = Math.round((horasDecimais - h) * 60)
+    const formatado = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+    return {
+      horasDecimais,
+      formatado
+    }
+  }, [startTime, endTime])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!hours) return
-    setSaving(true)
-    await onAdd({ date, hours, note })
-    setHours('')
-    setNote('')
-    setSaving(false)
+    if (!resumoPeriodo || isSubmitting) return
+
+    setIsSubmitting(true)
+    try {
+      await onAdd({
+        date,
+        hours: resumoPeriodo.horasDecimais, // Envia o valor decimal puro para o banco
+        note: note.trim() 
+          ? `${note.trim()} (${startTime} às ${endTime})`
+          : `${startTime} às ${endTime}`
+      })
+      setStartTime('')
+      setEndTime('')
+      setNote('')
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-card p-5 mb-6">
-      <h3 className="font-display text-lg font-semibold mb-3">Lançar horas extras</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+    <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-card p-5 mb-5">
+      <h3 className="font-display text-lg font-semibold mb-4">Lançar período trabalhado</h3>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div>
           <label className="block text-xs font-medium text-slate mb-1">Data</label>
           <input
@@ -35,34 +70,54 @@ export default function HourEntryForm({ onAdd }) {
             className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
         </div>
+
         <div>
-          <label className="block text-xs font-medium text-slate mb-1">Horas</label>
+          <label className="block text-xs font-medium text-slate mb-1">Hora Inicial</label>
           <input
-            type="number"
-            min="0"
-            step="0.5"
+            type="time"
             required
-            value={hours}
-            onChange={(e) => setHours(e.target.value)}
-            placeholder="Ex: 2.5"
-            className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            className="w-full rounded-lg border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
         </div>
-        <div className="sm:col-span-1">
-          <label className="block text-xs font-medium text-slate mb-1">Observação</label>
+
+        <div>
+          <label className="block text-xs font-medium text-slate mb-1">Hora Final</label>
           <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Opcional"
-            className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
+            type="time"
+            required
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            className="w-full rounded-lg border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
         </div>
+      </div>
+
+      {resumoPeriodo && (
+        <div className="bg-cloud/60 border border-line/50 rounded-lg p-3 mb-4 text-sm font-medium text-ink">
+          ⏱️ Subtotal trabalhado neste período: <span className="font-mono bg-white px-2 py-0.5 border border-line/40 rounded shadow-sm font-bold">{resumoPeriodo.formatado}h</span>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate mb-1">Observação (Opcional)</label>
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Ex: Rota extra"
+          className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
+        />
+      </div>
+
+      <div className="flex justify-end">
         <button
           type="submit"
-          disabled={saving}
-          className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-ink/90 transition disabled:opacity-60"
+          disabled={isSubmitting || !resumoPeriodo}
+          className="bg-ink hover:bg-ink/90 text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40"
         >
-          {saving ? 'Salvando…' : 'Adicionar'}
+          {isSubmitting ? 'Salvando...' : 'Adicionar Lançamento'}
         </button>
       </div>
     </form>

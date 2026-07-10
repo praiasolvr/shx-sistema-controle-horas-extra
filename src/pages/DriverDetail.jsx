@@ -2,14 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useDrivers } from '../hooks/useDrivers'
 import { useHourEntries } from '../hooks/useHourEntries'
-import {
-  filterEntriesByMonth,
-  sumHours,
-  getUsage,
-  formatHours,
-  monthLabel,
-  STATUS_META
-} from '../utils/hours'
+import { monthLabel, STATUS_META } from '../utils/hours'
 import RouteProgress from '../components/RouteProgress'
 import EmpresaBadge from '../components/EmpresaBadge'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -26,9 +19,58 @@ export default function DriverDetail() {
 
   const driver = drivers.find((d) => d.id === id)
 
-  const monthEntries = useMemo(() => filterEntriesByMonth(entries), [entries])
-  const totalHours = sumHours(monthEntries)
-  const usage = driver ? getUsage(totalHours, driver.maxHours) : null
+  // Transforma horas decimais para formato HH:MM clássico
+  const formatarParaRelogio = (decimal) => {
+    if (!decimal || decimal <= 0) return '00:00'
+    const totalMinutos = Math.round(decimal * 60)
+    const h = Math.floor(totalMinutos / 60)
+    const m = totalMinutos % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
+  const computedUsage = useMemo(() => {
+    if (!driver) return null
+
+    const currentMonthStr = new Date().toISOString().substring(0, 7)
+    const monthEntries = entries.filter((entry) => {
+      if (!entry.date) return false
+      return entry.date.substring(0, 7) === currentMonthStr
+    })
+
+    let minutos75 = 0
+    let minutos100 = 0
+
+    // Separação dia a dia exata por minutos
+    monthEntries.forEach((entry) => {
+      const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
+      const limite2HorasEmMinutos = 120
+
+      if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
+        minutos75 += brutoDiaEmMinutos
+      } else {
+        minutos75 += limite2HorasEmMinutos
+        minutos100 += (brutoDiaEmMinutos - limite2HorasEmMinutos)
+      }
+    })
+
+    const totalFaturadoDecimal = (minutos75 + minutos100) / 60
+    const maxHours = Number(driver.maxHours) || 40
+    const percent = maxHours > 0 ? (totalFaturadoDecimal / maxHours) * 100 : 0
+
+    // Define o status seguindo fielmente as chaves do seu STATUS_META em utils/hours.js
+    let status = 'ok'
+    if (percent >= 100) status = 'excedido'
+    else if (percent >= 90) status = 'critico'
+    else if (percent >= 75) status = 'atencao'
+
+    return {
+      totalHours: totalFaturadoDecimal,
+      totalHoursStr: formatarParaRelogio(totalFaturadoDecimal),
+      maxHoursStr: formatarParaRelogio(maxHours),
+      percent,
+      status,
+    }
+  }, [driver, entries])
 
   if (!driver) {
     return (
@@ -46,7 +88,8 @@ export default function DriverDetail() {
     navigate('/motoristas')
   }
 
-  const meta = STATUS_META[usage.status]
+  // Fallback seguro caso dê divergência futura
+  const meta = STATUS_META[computedUsage.status] || STATUS_META.ok
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
@@ -71,7 +114,7 @@ export default function DriverDetail() {
             to={`/lancar-horas?motorista=${driver.id}`}
             className="text-sm font-medium bg-ink text-white rounded-lg px-3 py-2 hover:bg-ink/90 transition"
           >
-            Lançar horas
+            Lancar horas
           </Link>
           <button
             onClick={() => setEditingDriver(true)}
@@ -88,18 +131,20 @@ export default function DriverDetail() {
         </div>
       </div>
 
-      <div className={`rounded-xl border p-5 mb-6 bg-white shadow-card ring-1 ${meta.ring}`}>
+      {/* Card Informativo Mensal Dinâmico */}
+      <div className={`rounded-xl border p-5 mb-6 bg-white shadow-card ring-1 ${meta.ring || 'border-line'}`}>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-mono uppercase tracking-wide text-slate">{monthLabel()}</p>
           <span className={`text-xs font-semibold ${meta.text}`}>{meta.label}</span>
         </div>
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="font-mono text-3xl font-semibold">{formatHours(totalHours)}</span>
-          <span className="text-slate text-sm">de {formatHours(driver.maxHours)} permitidas</span>
+          <span className="font-mono text-3xl font-semibold">{computedUsage.totalHoursStr}h</span>
+          <span className="text-slate text-sm">de {computedUsage.maxHoursStr}h permitidas</span>
         </div>
-        <RouteProgress percent={usage.percent} status={usage.status} />
+        <RouteProgress percent={computedUsage.percent} status={computedUsage.status} />
       </div>
 
+      {/* Histórico Geral de Lançamentos */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
         <div className="px-5 py-3 border-b border-line">
           <h3 className="font-display text-lg font-semibold">Histórico de lançamentos</h3>
@@ -123,11 +168,11 @@ export default function DriverDetail() {
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr key={entry.id} className="border-b border-line last:border-0">
+                <tr key={entry.id} className="border-b border-line last:border-0 hover:bg-cloud/20">
                   <td className="px-5 py-2">
                     {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
                   </td>
-                  <td className="px-5 py-2 font-mono">{formatHours(entry.hours)}</td>
+                  <td className="px-5 py-2 font-mono">{formatarParaRelogio(entry.hours)}h</td>
                   <td className="px-5 py-2 text-slate">{entry.note || '—'}</td>
                   <td className="px-5 py-2 text-right">
                     <button
