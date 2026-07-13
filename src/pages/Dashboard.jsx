@@ -228,8 +228,8 @@ export default function Dashboard() {
             <DriverCard 
               key={driver.id} 
               driver={driver} 
-              totalHours={totalHours} // Mantém prop original se o DriverCard precisar do float interno
-              totalHoursStr={totalHoursStr} // Passa a string formatada em HH:MM se necessário
+              totalHours={totalHours} 
+              totalHoursStr={totalHoursStr} 
               usage={usage} 
             />
           ))}
@@ -250,7 +250,8 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {sorted.map(({ driver, totalHoursStr, usage }) => {
-                const meta = STATUS_META[usage.status]
+                // Modificado para prevenir erros caso o status falhe
+                const meta = STATUS_META[usage.status] || STATUS_META.ok
                 return (
                   <tr
                     key={driver.id}
@@ -262,7 +263,8 @@ export default function Dashboard() {
                       </Link>
                     </td>
                     <td className="px-5 py-3">
-                      <ThemeBadge empresa={driver.empresa} />
+                      {/* Trocado de ThemeBadge para EmpresaBadge para corrigir o erro */}
+                      <EmpresaBadge empresa={driver.empresa} />
                     </td>
                     <td className="px-5 py-3 font-mono whitespace-nowrap">
                       {totalHoursStr}h{' '}
@@ -271,7 +273,9 @@ export default function Dashboard() {
                     <td className="px-5 py-3">
                       <RouteProgress percent={usage.percent} status={usage.status} compact />
                     </td>
-                    <td className={`px-5 py-3 font-medium whitespace-nowrap ${meta.text}`}>{meta.label}</td>
+                    <td className={`px-5 py-3 font-medium whitespace-nowrap ${meta.text}`}>
+                      {meta.label}
+                    </td>
                   </tr>
                 )
               })}

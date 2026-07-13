@@ -74,8 +74,6 @@ export default function DriverList() {
                 <th className="px-5 py-3 font-medium">Nome</th>
                 <th className="px-5 py-3 font-medium">Matrícula</th>
                 <th className="px-5 py-3 font-medium">Empresa</th>
-                <th className="px-5 py-3 font-medium">Função / veículo</th>
-                <th className="px-5 py-3 font-medium">Telefone</th>
                 <th className="px-5 py-3 font-medium font-mono">Limite mensal</th>
                 <th className="px-5 py-3"></th>
               </tr>
@@ -92,8 +90,6 @@ export default function DriverList() {
                   <td className="px-5 py-3">
                     <EmpresaBadge empresa={driver.empresa} />
                   </td>
-                  <td className="px-5 py-3 text-slate">{driver.role || '—'}</td>
-                  <td className="px-5 py-3 text-slate">{driver.phone || '—'}</td>
                   <td className="px-5 py-3 font-mono">{formatHours(driver.maxHours)}</td>
                   <td className="px-5 py-3 text-right whitespace-nowrap">
                     <button

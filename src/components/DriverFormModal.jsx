@@ -65,24 +65,8 @@ export default function DriverFormModal({ initial, onClose, onSave }) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate mb-1">Função / veículo</label>
-              <input
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full rounded-lg border border-line px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ink/20"
-                placeholder="Ex: Carreta 04"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate mb-1">Telefone</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-lg border border-line px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ink/20"
-                placeholder="(00) 00000-0000"
-              />
-            </div>
+            
+            
           </div>
 
           <div>

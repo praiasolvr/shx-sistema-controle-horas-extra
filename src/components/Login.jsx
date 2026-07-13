@@ -34,7 +34,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-line px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ink/20"
-              placeholder="voce@empresa.com"
+              placeholder="Insira seu email"
             />
           </div>
           <div>
@@ -58,7 +58,7 @@ export default function Login() {
           </button>
         </form>
         <p className="text-xs text-slate mt-5">
-          Crie o usuário no Firebase Authentication (Email/Senha) do seu projeto para acessar.
+          {/* Crie o usuário no Firebase Authentication (Email/Senha) do seu projeto para acessar. */}
         </p>
       </div>
     </div>
