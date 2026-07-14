@@ -85,16 +85,19 @@ export default function Dashboard() {
   const loading = loadingDrivers || loadingEntries
 
   async function handleExport(type) {
-    const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
-    const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
-    setExporting(true)
-    try {
-      if (type === 'excel') await exportExcel(rows, label)
-      else await exportPDF(rows, label)
-    } finally {
-      setExporting(false)
+  const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
+  const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
+  setExporting(true)
+  try {
+    if (type === 'excel') {
+      await exportExcel(rows, label, entriesByDriver) 
+    } else {
+      await exportPDF(rows, label)
     }
+  } finally {
+    setExporting(false)
   }
+}
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
