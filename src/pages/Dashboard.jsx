@@ -66,7 +66,7 @@ export default function Dashboard() {
       } catch (error) {
         console.error('Erro ao buscar o perfil do usuário no painel:', error)
       } finally {
-        setLoadingUser(false)
+        loadingUser && setLoadingUser(false)
       }
     }
     fetchUserRole()
@@ -122,10 +122,17 @@ export default function Dashboard() {
     })
   }, [drivers, entriesByDriver, userRole, userEmpresa, loadingUser])
 
-  // Filtra de acordo com a barra de busca e o filtro de empresa selecionado
+  // Filtra de acordo com a barra de busca, filtro de empresa e ESCOPO DE HORAS EXTRAS selecionado
   const filtered = useMemo(() => {
     return computed
       .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
+      .filter((c) => {
+        // Se a opção "Somente c/ hora extra" estiver ativa, oculta quem tem 0 horas
+        if (exportScope === 'comHoras') {
+          return c.totalHours > 0
+        }
+        return true
+      })
       .filter((c) => {
         if (!search.trim()) return true
         const q = search.toLowerCase()
@@ -134,23 +141,24 @@ export default function Dashboard() {
           (c.driver.matricula || '').toLowerCase().includes(q)
         )
       })
-  }, [computed, empresaFilter, search])
+  }, [computed, empresaFilter, search, exportScope])
 
+  // Ordena a lista resultante em ordem alfabética de A-Z pelo nome do motorista
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => b.totalHours - a.totalHours)
+    return [...filtered].sort((a, b) => a.driver.name.localeCompare(b.driver.name))
   }, [filtered])
   
-  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua
+  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua (ordenados em ordem alfabética)
   const alertedDrivers = useMemo(() => {
     return filtered
       .filter((c) => c.totalHours >= alertaHoras)
-      .sort((a, b) => b.totalHours - a.totalHours)
+      .sort((a, b) => a.driver.name.localeCompare(b.driver.name))
   }, [filtered, alertaHoras])
 
   const loading = loadingDrivers || loadingEntries || loadingUser
 
   async function handleExport(type) {
-    const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
+    const rows = sorted // Já está filtrada e ordenada de forma correta pelas opções da tela
     const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
     setExporting(true)
     try {
@@ -334,7 +342,7 @@ export default function Dashboard() {
 
       {!loading && drivers.length > 0 && sorted.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-10 text-center">
-          <p className="text-slate">Nenhum motorista cadastrado para a empresa {userEmpresa}.</p>
+          <p className="text-slate">Nenhum motorista cadastrado ou com horas extras para exibir.</p>
         </div>
       )}
 
