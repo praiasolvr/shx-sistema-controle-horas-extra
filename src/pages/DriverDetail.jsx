@@ -53,7 +53,9 @@ export default function DriverDetail() {
       }
     })
 
-    const totalFaturadoDecimal = (minutos75 + minutos100) / 60
+    const total75Decimal = minutos75 / 60
+    const total100Decimal = minutos100 / 60
+    const totalFaturadoDecimal = total75Decimal + total100Decimal
     const maxHours = Number(driver.maxHours) || 40
     const percent = maxHours > 0 ? (totalFaturadoDecimal / maxHours) * 100 : 0
 
@@ -66,6 +68,8 @@ export default function DriverDetail() {
     return {
       totalHours: totalFaturadoDecimal,
       totalHoursStr: formatarParaRelogio(totalFaturadoDecimal),
+      total75Str: formatarParaRelogio(total75Decimal),     // 🌟 Novo campo calculado
+      total100Str: formatarParaRelogio(total100Decimal),   // 🌟 Novo campo calculado
       maxHoursStr: formatarParaRelogio(maxHours),
       percent,
       status,
@@ -137,11 +141,23 @@ export default function DriverDetail() {
           <p className="text-xs font-mono uppercase tracking-wide text-slate">{monthLabel()}</p>
           <span className={`text-xs font-semibold ${meta.text}`}>{meta.label}</span>
         </div>
-        <div className="flex items-baseline gap-2 mb-3">
+        <div className="flex items-baseline gap-2 mb-4">
           <span className="font-mono text-3xl font-semibold">{computedUsage.totalHoursStr}h</span>
           <span className="text-slate text-sm">de {computedUsage.maxHoursStr}h permitidas</span>
         </div>
         <RouteProgress percent={computedUsage.percent} status={computedUsage.status} />
+
+        {/* 🌟 NOVA SEÇÃO: Distribuição das Horas (75% e 100%) */}
+        <div className="grid grid-cols-2 gap-4 border-t border-line/60 pt-4 mt-4">
+          <div>
+            <p className="text-[10px] uppercase font-mono tracking-wider text-slate">Horas Regime 75%</p>
+            <p className="font-mono font-semibold text-lg text-ink mt-0.5">{computedUsage.total75Str}h</p>
+          </div>
+          <div className="border-l border-line/60 pl-4">
+            <p className="text-[10px] uppercase font-mono tracking-wider text-slate">Horas Regime 100%</p>
+            <p className="font-mono font-semibold text-lg text-ink mt-0.5">{computedUsage.total100Str}h</p>
+          </div>
+        </div>
       </div>
 
       {/* Histórico Geral de Lançamentos */}

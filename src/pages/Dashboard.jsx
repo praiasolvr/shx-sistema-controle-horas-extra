@@ -80,6 +80,8 @@ export default function Dashboard() {
         driver, 
         totalHours: totalFaturadoDecimal, 
         totalHoursStr: formatarParaRelogio(totalFaturadoDecimal), 
+        total75Str: formatarParaRelogio(total75Decimal), // 🌟 Novo campo calculado
+        total100Str: formatarParaRelogio(total100Decimal), // 🌟 Novo campo calculado
         usage 
       }
     })
@@ -149,7 +151,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* AJUSTE AQUI: Passando o limite de horas para o banner exibir dinamicamente o texto correto */}
       <AlertBanner alertedDrivers={alertedDrivers} alertaHoras={alertaHoras} />
 
       {/* Filtros */}
@@ -280,12 +281,14 @@ export default function Dashboard() {
 
       {!loading && sorted.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map(({ driver, totalHours, totalHoursStr, usage }) => (
+          {sorted.map(({ driver, totalHours, totalHoursStr, total75Str, total100Str, usage }) => (
             <DriverCard 
               key={driver.id} 
               driver={driver} 
               totalHours={totalHours} 
-              totalHoursStr={totalHoursStr} 
+              totalHoursStr={totalHoursStr}
+              total75Str={total75Str} // 🌟 Enviando para o card
+              total100Str={total100Str} // 🌟 Enviando para o card
               usage={usage} 
             />
           ))}
@@ -299,13 +302,13 @@ export default function Dashboard() {
               <tr className="text-left text-slate border-b border-line whitespace-nowrap">
                 <th className="px-5 py-3 font-medium">Nome</th>
                 <th className="px-5 py-3 font-medium">Empresa</th>
-                <th className="px-5 py-3 font-medium font-mono">Horas</th>
+                <th className="px-5 py-3 font-medium font-mono">Total / 75% / 100%</th>
                 <th className="px-5 py-3 font-medium w-56">Progresso</th>
                 <th className="px-5 py-3 font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map(({ driver, totalHoursStr, usage }) => {
+              {sorted.map(({ driver, totalHoursStr, total75Str, total100Str, usage }) => {
                 const meta = STATUS_META[usage.status] || STATUS_META.ok
                 return (
                   <tr
@@ -321,8 +324,11 @@ export default function Dashboard() {
                       <EmpresaBadge empresa={driver.empresa} />
                     </td>
                     <td className="px-5 py-3 font-mono whitespace-nowrap">
-                      {totalHoursStr}h{' '}
-                      <span className="text-slate">/ {formatarParaRelogio(driver.maxHours)}h</span>
+                      <div className="font-bold text-ink">{totalHoursStr}h</div>
+                      <div className="text-xs text-slate">
+                        75%: <span className="font-medium text-ink/80">{total75Str}h</span> | 
+                        100%: <span className="font-medium text-ink/80">{total100Str}h</span>
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       <RouteProgress percent={usage.percent} status={usage.status} compact />
