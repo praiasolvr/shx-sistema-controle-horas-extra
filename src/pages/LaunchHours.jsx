@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useDrivers } from '../hooks/useDrivers'
 import { useHourEntries } from '../hooks/useHourEntries'
+import { useAuth } from '../context/AuthContext' // 1. Importamos o hook de autenticação
 import {
   filterEntriesByMonth,
   monthLabel,
@@ -16,34 +17,45 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function LaunchHours() {
   const { drivers, loading } = useDrivers()
+  const { profile } = useAuth() // 2. Obtemos o perfil (role e empresa) do usuário logado
   const [searchParams] = useSearchParams()
   const [empresaFilter, setEmpresaFilter] = useState('Todas')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState(searchParams.get('motorista') || '')
   const [deletingEntry, setDeletingEntry] = useState(null)
 
+  // 3. Ajuste automático de filtros baseado no cargo de Supervisor
+  useEffect(() => {
+    if (profile?.role === 'supervisor' && profile?.empresa) {
+      setEmpresaFilter(profile.empresa)
+    }
+  }, [profile])
+
   useEffect(() => {
     const fromUrl = searchParams.get('motorista')
     if (fromUrl) setSelectedId(fromUrl)
   }, [searchParams])
 
+  // 4. Filtragem de motoristas respeitando as regras do Supervisor
   const filteredDrivers = useMemo(() => {
     return drivers.filter((d) => {
-      const matchesEmpresa = empresaFilter === 'Todas' || d.empresa === empresaFilter
+      // Se for supervisor, força o filtro a exibir apenas a empresa dele
+      const empresaAlvo = profile?.role === 'supervisor' ? profile.empresa : empresaFilter
+      const matchesEmpresa = empresaAlvo === 'Todas' || d.empresa === empresaAlvo
+      
       const matchesSearch =
         !search.trim() ||
         d.name.toLowerCase().includes(search.toLowerCase()) ||
         (d.matricula || '').toLowerCase().includes(search.toLowerCase())
       return matchesEmpresa && matchesSearch
     })
-  }, [drivers, empresaFilter, search])
+  }, [drivers, empresaFilter, search, profile])
 
   const selectedDriver = drivers.find((d) => d.id === selectedId)
   const { entries, addEntry, deleteEntry } = useHourEntries(selectedId)
 
   const monthEntries = useMemo(() => filterEntriesByMonth(entries), [entries])
 
-  // Função auxiliar local para formatar o número decimal exatamente em formato relógio HH:MM
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00'
     const h = Math.floor(decimal)
@@ -51,14 +63,13 @@ export default function LaunchHours() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   }
 
-  // FECHAMENTO MENSAL CORRIGIDO (Sem o cálculo de 0.75, mantendo 2h cheias e exibindo HH:MM)
   const fechamentoMensal = useMemo(() => {
     let minutos75 = 0
     let minutos100 = 0
 
     monthEntries.forEach((entry) => {
       const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
-      const limite2HorasEmMinutos = 2 * 60 // 120 minutos
+      const limite2HorasEmMinutos = 2 * 60
 
       if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
         minutos75 += brutoDiaEmMinutos
@@ -84,6 +95,9 @@ export default function LaunchHours() {
     ? getUsage(fechamentoMensal.totalGeralDecimal, selectedDriver.maxHours) 
     : null
 
+  // Identifica se o usuário atual tem permissão de escrita/lançamento (Lançador ou Supervisor)
+  const canWrite = profile?.role === 'lancador' || profile?.role === 'supervisor'
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
       <div className="mb-6">
@@ -92,7 +106,9 @@ export default function LaunchHours() {
         </p>
         <h1 className="font-display text-3xl font-semibold">Lançar horas</h1>
         <p className="text-sm text-slate mt-1">
-          Escolha um motorista e registre as horas extras do dia.
+          {profile?.role === 'rh' 
+            ? 'Visualize os lançamentos e relatórios de horas extras.' 
+            : 'Escolha um motorista e registre as horas extras do dia.'}
         </p>
       </div>
 
@@ -105,18 +121,26 @@ export default function LaunchHours() {
             placeholder="Buscar por nome ou matrícula"
             className="w-full rounded-lg border border-line px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
-          <div className="flex gap-1.5 mb-3">
-            {['Todas', ...EMPRESAS].map((option) => (
-              <button
-                key={option}
-                onClick={() => setEmpresaFilter(option)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                  empresaFilter === option ? 'bg-ink text-white' : 'bg-cloud text-slate hover:text-ink'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
+          
+          {/* 5. Menu de Filtro de Empresas (Desabilitado ou Ocultado para o Supervisor) */}
+          <div className="flex gap-1.5 mb-3 flex-wrap">
+            {profile?.role === 'supervisor' ? (
+              <span className="text-xs text-slate px-2 py-1 bg-cloud rounded-md font-medium">
+                Filtrado por: <strong>{profile.empresa}</strong>
+              </span>
+            ) : (
+              ['Todas', ...EMPRESAS].map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setEmpresaFilter(option)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                    empresaFilter === option ? 'bg-ink text-white' : 'bg-cloud text-slate hover:text-ink'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))
+            )}
           </div>
 
           {loading && <p className="text-sm text-slate">Carregando…</p>}
@@ -147,7 +171,7 @@ export default function LaunchHours() {
         <div>
           {!selectedDriver && (
             <div className="bg-white rounded-xl shadow-card p-10 text-center text-slate">
-              Selecione um motorista na lista ao lado para lançar horas.
+              Selecione um motorista na lista ao lado para ver os lançamentos.
             </div>
           )}
 
@@ -164,7 +188,6 @@ export default function LaunchHours() {
                   </Link>
                 </div>
 
-                {/* Painel de Fechamento Exibindo Formato Relógio Real (HH:MM) */}
                 <div className="grid grid-cols-3 gap-3 bg-cloud/50 border border-line/40 rounded-xl p-3.5 mb-4">
                   <div className="text-center">
                     <span className="block text-[10px] uppercase font-semibold text-slate tracking-wider">Total Mensal (75%)</span>
@@ -192,7 +215,14 @@ export default function LaunchHours() {
                 <RouteProgress percent={usage.percent} status={usage.status} />
               </div>
 
-              <HourEntryForm onAdd={addEntry} />
+              {/* 6. Bloqueia exibição do formulário de inserção se for perfil de RH */}
+              {canWrite ? (
+                <HourEntryForm onAdd={addEntry} />
+              ) : (
+                <div className="bg-amber-50 text-amber-800 text-xs rounded-xl p-4 border border-amber-200 mb-5">
+                  Seu perfil de **RH** possui acesso de apenas visualização. Não é possível lançar ou remover horas.
+                </div>
+              )}
 
               <div className="bg-white rounded-xl shadow-card overflow-hidden">
                 <div className="px-5 py-3 border-b border-line">
@@ -207,7 +237,8 @@ export default function LaunchHours() {
                         <th className="px-5 py-2 font-medium">Data</th>
                         <th className="px-5 py-2 font-medium font-mono">Horas Reais</th>
                         <th className="px-5 py-2 font-medium">Período / Observação</th>
-                        <th className="px-5 py-2"></th>
+                        <th className="px-5 py-2 font-medium">Lançado por</th> {/* 7. Coluna de Auditoria na Tela */}
+                        {canWrite && <th className="px-5 py-2"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -220,14 +251,25 @@ export default function LaunchHours() {
                             {formatarParaRelogio(entry.hours)}h
                           </td>
                           <td className="px-5 py-2 text-slate text-xs">{entry.note || '—'}</td>
-                          <td className="px-5 py-2 text-right">
-                            <button
-                              onClick={() => setDeletingEntry(entry)}
-                              className="text-alert hover:text-alert/80 text-xs font-medium"
-                            >
-                              Excluir
-                            </button>
+                          
+                          {/* Exibe o nome de quem lançou ou um fall-back para o email */}
+                          <td className="px-5 py-2 text-xs">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-cloud text-slate-700">
+                              {entry.createdByName || entry.createdByEmail?.split('@')[0] || 'Sistema'}
+                            </span>
                           </td>
+
+                          {/* 8. Só exibe o botão de Excluir se o usuário tiver poder de escrita */}
+                          {canWrite && (
+                            <td className="px-5 py-2 text-right">
+                              <button
+                                onClick={() => setDeletingEntry(entry)}
+                                className="text-alert hover:text-alert/80 text-xs font-medium"
+                              >
+                                Excluir
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

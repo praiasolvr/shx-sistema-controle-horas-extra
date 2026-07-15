@@ -9,7 +9,6 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    console.log ("handleSubmit")
     setSubmitting(true)
     await login(email, password)
     setSubmitting(false)
