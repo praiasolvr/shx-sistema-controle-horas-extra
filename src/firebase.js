@@ -2,8 +2,6 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 
-// Substitua pelos dados do SEU projeto Firebase.
-// Console: https://console.firebase.google.com -> Configurações do projeto -> Seus apps -> SDK setup and configuration
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,

@@ -17,14 +17,11 @@ export default function Dashboard() {
   const [empresaFilter, setEmpresaFilter] = useState('Todas')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState('cards')
-  const [exportScope, setExportScope] = useState('todos') // 'todos' | 'comHoras'
+  const [exportScope, setExportScope] = useState('todos')
   const [exporting, setExporting] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
-  
-  // Novo estado para o limite de horas que ativa o alerta (porcentagem de uso)
   const [alertaPorcentagem, setAlertaPorcentagem] = useState(75)
 
-  // Função utilitária local para formatar o decimal em relógio HH:MM de forma precisa
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00'
     const h = Math.floor(decimal)
@@ -35,14 +32,12 @@ export default function Dashboard() {
   const computed = useMemo(() => {
     return drivers.map((driver) => {
       const monthEntries = filterEntriesByMonth(entriesByDriver[driver.id] || [])
-      
       let minutos75 = 0
       let minutos100 = 0
 
-      // Separação dia a dia baseada em minutos para evitar problemas com floats
       monthEntries.forEach((entry) => {
         const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
-        const limite2HorasEmMinutos = 2 * 60 // 120 minutos
+        const limite2HorasEmMinutos = 2 * 60
 
         if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
           minutos75 += brutoDiaEmMinutos
@@ -54,15 +49,13 @@ export default function Dashboard() {
 
       const total75Decimal = minutos75 / 60
       const total100Decimal = minutos100 / 60
-      // O total acumulado faturado que o motorista de fato possui no mês (75 + 100)
       const totalFaturadoDecimal = total75Decimal + total100Decimal
-
       const usage = getUsage(totalFaturadoDecimal, driver.maxHours)
 
       return { 
         driver, 
-        totalHours: totalFaturadoDecimal, // Mantemos decimal para lógica de filtros/gráficos
-        totalHoursStr: formatarParaRelogio(totalFaturadoDecimal), // Formato legível HH:MM
+        totalHours: totalFaturadoDecimal, 
+        totalHoursStr: formatarParaRelogio(totalFaturadoDecimal), 
         usage 
       }
     })
@@ -80,8 +73,6 @@ export default function Dashboard() {
     })
 
   const sorted = [...filtered].sort((a, b) => b.usage.percent - a.usage.percent)
-
-  // Agora filtra dinamicamente de acordo com a porcentagem selecionada pelo usuário
   const alertedDrivers = filtered
     .filter((c) => c.usage.percent >= alertaPorcentagem)
     .sort((a, b) => b.usage.percent - a.usage.percent)
@@ -112,12 +103,23 @@ export default function Dashboard() {
           </p>
           <h1 className="font-display text-3xl font-semibold">Painel geral</h1>
         </div>
-        <Link
-          to="/lancar-horas"
-          className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-ink/90 transition"
-        >
-          + Lançar horas
-        </Link>
+        
+        <div className="flex gap-2">
+          {/* Link para a nova página de Gestão de Usuários (Você pode controlar a visibilidade deste link no seu menu/header também) */}
+          <Link
+            to="/usuarios"
+            className="border border-line bg-white text-ink rounded-lg px-4 py-2 text-sm font-medium hover:bg-cloud transition"
+          >
+            Gerenciar Usuários
+          </Link>
+
+          <Link
+            to="/lancar-horas"
+            className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-ink/90 transition"
+          >
+            + Lançar horas
+          </Link>
+        </div>
       </div>
 
       <AlertBanner alertedDrivers={alertedDrivers} />
@@ -169,7 +171,6 @@ export default function Dashboard() {
       {/* Exportação, WhatsApp e Novo Seletor de Alerta */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 flex-wrap">
-          {/* Seletor de exportação de dados */}
           <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
             <button
               onClick={() => setExportScope('todos')}
@@ -189,10 +190,9 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* NOVO SELETOR: Definição da sensibilidade/alerta de limite */}
           <div className="flex items-center gap-2 bg-cloud rounded-lg p-1 w-fit border border-line/40">
             <span className="text-xs text-slate font-medium pl-2 pr-1">Régua do Alerta:</span>
-            {[30, 40, 50].map((pct) => (
+            {[30, 40, 50, 75, 90, 100].map((pct) => (
               <button
                 key={pct}
                 onClick={() => setAlertaPorcentagem(pct)}

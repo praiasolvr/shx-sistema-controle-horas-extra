@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import DriverList from './pages/DriverList'
 import DriverDetail from './pages/DriverDetail'
 import LaunchHours from './pages/LaunchHours'
+import UsersManagement from './pages/UsersManagement'
 
 function AppShell() {
   const { user, loading } = useAuth()
@@ -31,6 +32,7 @@ function AppShell() {
           <Route path="/lancar-horas" element={<LaunchHours />} />
           <Route path="/motoristas" element={<DriverList />} />
           <Route path="/motoristas/:id" element={<DriverDetail />} />
+          <Route path="/usuarios" element={<UsersManagement />} />
         </Routes>
       </main>
     </div>

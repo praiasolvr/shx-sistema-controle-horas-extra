@@ -1,9 +1,30 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LayoutDashboard, FileClock, Users } from "lucide-react";
+import { db } from "../firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { LayoutDashboard, FileClock, Users, UserCog, LogOut } from "lucide-react";
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
+  const [role, setRole] = useState(null);
+
+  // Buscar o perfil do usuário logado para saber se exibe o menu de controle
+  useEffect(() => {
+    async function getUserRole() {
+      if (user?.uid) {
+        try {
+          const docSnap = await getDoc(doc(db, "users", user.uid));
+          if (docSnap.exists()) {
+            setRole(docSnap.data().role);
+          }
+        } catch (error) {
+          console.error("Erro ao buscar permissões do usuário no sidebar:", error);
+        }
+      }
+    }
+    getUserRole();
+  }, [user]);
 
   const linkClass = ({ isActive }) =>
     `block px-3 py-2 rounded-lg text-sm font-medium transition ${
@@ -43,6 +64,17 @@ export default function Sidebar() {
           <Users className="w-5 h-5" />
           <span>Motoristas</span>
         </NavLink>
+
+        {/* EXCLUSIVO: Exibir Gestão de Usuários apenas se o logado for Supervisor */}
+        {role === "supervisor" && (
+          <NavLink
+            to="/usuarios"
+            className={`${linkClass} flex items-center gap-2`}
+          >
+            <UserCog className="w-5 h-5 text-amber" />
+            <span className="text-amber">Gerenciar Usuários</span>
+          </NavLink>
+        )}
       </nav>
       <div className="px-3 py-4 border-t border-white/10">
         <p className="px-3 text-xs text-white/50 mb-2 truncate">
@@ -50,9 +82,10 @@ export default function Sidebar() {
         </p>
         <button
           onClick={logout}
-          className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/5 hover:text-white transition"
+          className="w-full flex flex-row items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/5 hover:text-white transition"
         >
-          Sair
+          <LogOut className="w-5 h-5 shrink-0" />
+          <span>Sair</span>  
         </button>
       </div>
     </aside>
