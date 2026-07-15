@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { auth, db } from '../firebase'
+import { doc, getDoc } from 'firebase/firestore'
 import { useDrivers } from '../hooks/useDrivers'
 import { useAllEntries } from '../hooks/useAllEntries'
 import { getUsage, monthLabel, filterEntriesByMonth, STATUS_META } from '../utils/hours'
@@ -20,7 +22,29 @@ export default function Dashboard() {
   const [exportScope, setExportScope] = useState('todos')
   const [exporting, setExporting] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
-  const [alertaPorcentagem, setAlertaPorcentagem] = useState(75)
+  
+  // Régua controlada diretamente por HORAS (padrão 40 horas)
+  const [alertaHoras, setAlertaHoras] = useState(40)
+
+  const [userRole, setUserRole] = useState(null)
+
+  useEffect(() => {
+    async function fetchUserRole() {
+      const currentUser = auth.currentUser
+      if (currentUser) {
+        try {
+          const docRef = doc(db, 'users', currentUser.uid)
+          const docSnap = await getDoc(docRef)
+          if (docSnap.exists()) {
+            setUserRole(docSnap.data().role)
+          }
+        } catch (error) {
+          console.error('Erro ao buscar o perfil do usuário no painel:', error)
+        }
+      }
+    }
+    fetchUserRole()
+  }, [])
 
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00'
@@ -72,10 +96,12 @@ export default function Dashboard() {
       )
     })
 
-  const sorted = [...filtered].sort((a, b) => b.usage.percent - a.usage.percent)
+  const sorted = [...filtered].sort((a, b) => b.totalHours - a.totalHours)
+  
+  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua
   const alertedDrivers = filtered
-    .filter((c) => c.usage.percent >= alertaPorcentagem)
-    .sort((a, b) => b.usage.percent - a.usage.percent)
+    .filter((c) => c.totalHours >= alertaHoras)
+    .sort((a, b) => b.totalHours - a.totalHours)
 
   const loading = loadingDrivers || loadingEntries
 
@@ -105,13 +131,14 @@ export default function Dashboard() {
         </div>
         
         <div className="flex gap-2">
-          {/* Link para a nova página de Gestão de Usuários (Você pode controlar a visibilidade deste link no seu menu/header também) */}
-          <Link
-            to="/usuarios"
-            className="border border-line bg-white text-ink rounded-lg px-4 py-2 text-sm font-medium hover:bg-cloud transition"
-          >
-            Gerenciar Usuários
-          </Link>
+          {userRole === 'supervisor' && (
+            <Link
+              to="/usuarios"
+              className="border border-line bg-white text-ink rounded-lg px-4 py-2 text-sm font-medium hover:bg-cloud transition"
+            >
+              Gerenciar Usuários
+            </Link>
+          )}
 
           <Link
             to="/lancar-horas"
@@ -122,7 +149,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <AlertBanner alertedDrivers={alertedDrivers} />
+      {/* AJUSTE AQUI: Passando o limite de horas para o banner exibir dinamicamente o texto correto */}
+      <AlertBanner alertedDrivers={alertedDrivers} alertaHoras={alertaHoras} />
 
       {/* Filtros */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
@@ -168,7 +196,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Exportação, WhatsApp e Novo Seletor de Alerta */}
+      {/* Exportação, WhatsApp e Régua de Alerta */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 flex-wrap">
           <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
@@ -192,17 +220,17 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2 bg-cloud rounded-lg p-1 w-fit border border-line/40">
             <span className="text-xs text-slate font-medium pl-2 pr-1">Régua do Alerta:</span>
-            {[30, 40, 50, 75, 90, 100].map((pct) => (
+            {[30, 40, 50].map((horas) => (
               <button
-                key={pct}
-                onClick={() => setAlertaPorcentagem(pct)}
+                key={horas}
+                onClick={() => setAlertaHoras(horas)}
                 className={`px-2 py-1 rounded-md text-xs font-semibold transition ${
-                  alertaPorcentagem === pct
+                  alertaHoras === horas
                     ? 'bg-ink text-white shadow-sm'
                     : 'text-slate hover:text-ink hover:bg-cloud/50'
                 }`}
               >
-                {pct}%
+                {horas}h
               </button>
             ))}
           </div>

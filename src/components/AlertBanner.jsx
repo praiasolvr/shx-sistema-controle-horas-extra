@@ -1,35 +1,29 @@
-import { Link } from 'react-router-dom'
-import { STATUS_META } from '../utils/hours'
-
-export default function AlertBanner({ alertedDrivers }) {
+// Exemplo de como ajustar o seu components/AlertBanner.jsx:
+export default function AlertBanner({ alertedDrivers, alertaHoras = 40 }) {
   if (alertedDrivers.length === 0) return null
 
   return (
-    <div className="rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 mb-6">
-      <p className="text-sm font-medium text-amber-dark mb-2">
-        {alertedDrivers.length === 1
-          ? '1 motorista precisa de atenção'
-          : `${alertedDrivers.length} motoristas precisam de atenção`}
-      </p>
-      <ul className="space-y-1">
-        {alertedDrivers.map(({ driver, usage }) => {
-          const meta = STATUS_META[usage.status]
-          return (
-            <li key={driver.id} className="text-sm flex items-center gap-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: meta.color }}
-              />
-              <Link to={`/motoristas/${driver.id}`} className="font-medium hover:underline">
-                {driver.name}
-              </Link>
-              <span className="text-slate">
-                — {meta.label.toLowerCase()} ({usage.percent.toFixed(0)}%)
-              </span>
-            </li>
-          )
-        })}
-      </ul>
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+      {/* Ícone de Alerta */}
+      <div className="text-amber-600 mt-0.5">⚠️</div>
+      <div>
+        <h4 className="font-semibold text-amber-900 text-sm">
+          Atenção necessária ({alertedDrivers.length})
+        </h4>
+        <p className="text-xs text-amber-700 mt-0.5">
+          Os seguintes motoristas já atingiram ou ultrapassaram o limite de <strong>{alertaHoras} horas extras</strong> acumuladas no mês atual:
+        </p>
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {alertedDrivers.map(({ driver, totalHoursStr }) => (
+            <span 
+              key={driver.id} 
+              className="inline-flex items-center gap-1 bg-white border border-amber-200 rounded px-2 py-0.5 text-xs font-medium text-amber-800"
+            >
+              {driver.name} ({totalHoursStr}h)
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
