@@ -4,6 +4,8 @@ import { collection, getDocs, doc, setDoc, deleteDoc, updateDoc, getDoc } from '
 import { useNavigate } from 'react-router-dom'
 import { initializeApp, getApp, deleteApp } from 'firebase/app'
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth'
+import { EMPRESAS } from '../utils/constants'
+import EmpresaBadge from '../components/EmpresaBadge'
 
 export default function UsersManagement() {
   const [currentUserRole, setCurrentUserRole] = useState(null)
@@ -19,6 +21,7 @@ export default function UsersManagement() {
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('lancador')
+  const [empresa, setEmpresa] = useState('') // Estado da empresa destinada
   const [password, setPassword] = useState('') // Estado da Senha
 
   // Validar se o usuário atual é Supervisor
@@ -90,7 +93,8 @@ export default function UsersManagement() {
         await updateDoc(userRef, {
           name: nome,
           email: email,
-          role: role
+          role: role,
+          empresa: empresa // Salva a alteração da empresa
         })
         setSuccess('Usuário atualizado com sucesso!')
       } else {
@@ -112,6 +116,7 @@ export default function UsersManagement() {
           name: nome,
           email: email,
           role: role,
+          empresa: empresa, // Salva a empresa selecionada
           createdAt: new Date().toISOString()
         })
 
@@ -137,6 +142,7 @@ export default function UsersManagement() {
     setNome(user.name)
     setEmail(user.email)
     setRole(user.role || 'lancador')
+    setEmpresa(user.empresa || '') // Carrega a empresa atual no form
     setPassword('') // Limpa o campo de senha durante a edição
   }
 
@@ -159,6 +165,7 @@ export default function UsersManagement() {
     setNome('')
     setEmail('')
     setRole('lancador')
+    setEmpresa('')
     setPassword('')
   }
 
@@ -222,7 +229,7 @@ export default function UsersManagement() {
                 placeholder="carlos@empresa.com"
                 className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
                 required
-                disabled={isEditing} // e-mail de login do Firebase Auth geralmente não é alterado diretamente aqui
+                disabled={isEditing}
               />
             </div>
 
@@ -251,6 +258,23 @@ export default function UsersManagement() {
                 <option value="lancador">Lançador (Lança e edita horas)</option>
                 <option value="supervisor">Supervisor (Permissão total)</option>
                 <option value="rh">RH (Visualiza relatórios e exporta)</option>
+              </select>
+            </div>
+
+            {/* Campo corrigido: Destinação de Empresa chamando setEmpresa */}
+            <div>
+              <label className="block text-xs font-medium text-slate uppercase mb-1">Empresa Designada</label>
+              <select
+                value={empresa}
+                onChange={(e) => setEmpresa(e.target.value)}
+                className="w-full rounded-lg border border-line px-3 py-2 text-sm bg-white focus:outline-none"
+              >
+                <option value="">Sem empresa designada (Vê todas / Supervisor global)</option>
+                {EMPRESAS.map((emp) => (
+                  <option key={emp} value={emp}>
+                    {emp}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -284,7 +308,7 @@ export default function UsersManagement() {
               <thead>
                 <tr className="bg-cloud text-left text-slate border-b border-line">
                   <th className="px-5 py-3 font-medium">Nome</th>
-                  <th className="px-5 py-3 font-medium">Perfil</th>
+                  <th className="px-5 py-3 font-medium">Perfil & Empresa</th>
                   <th className="px-5 py-3 font-medium text-right">Ações</th>
                 </tr>
               </thead>
@@ -296,15 +320,20 @@ export default function UsersManagement() {
                       <p className="text-xs text-slate">{user.email}</p>
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        user.role === 'supervisor' 
-                          ? 'bg-red-50 text-red-700 border border-red-200' 
-                          : user.role === 'rh' 
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'bg-green-50 text-green-700 border border-green-200'
-                      }`}>
-                        {user.role === 'supervisor' ? 'Supervisor' : user.role === 'rh' ? 'RH' : 'Lançador'}
-                      </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
+                          user.role === 'supervisor' 
+                            ? 'bg-red-50 text-red-700 border border-red-200' 
+                            : user.role === 'rh' 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-green-50 text-green-700 border border-green-200'
+                        }`}>
+                          {user.role === 'supervisor' ? 'Supervisor' : user.role === 'rh' ? 'RH' : 'Lançador'}
+                        </span>
+                        {user.empresa && (
+                          <EmpresaBadge empresa={user.empresa} />
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-right space-x-2">
                       <button

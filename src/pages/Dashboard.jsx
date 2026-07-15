@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { auth, db } from '../firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { useDrivers } from '../hooks/useDrivers'
@@ -14,8 +14,17 @@ import RouteProgress from '../components/RouteProgress'
 import WhatsAppAlertModal from '../components/WhatsAppAlertModal'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
+  
+  // Estados de controle de acesso do usuário logado
+  const [userRole, setUserRole] = useState(null)
+  const [userEmpresa, setUserEmpresa] = useState(null) // Inicializa como null para sabermos quando terminou de carregar
+  const [loadingUser, setLoadingUser] = useState(true)
+
+  // Só ativa a busca de motoristas e lançamentos quando o perfil do usuário for totalmente carregado
   const { drivers, loading: loadingDrivers } = useDrivers()
   const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers)
+  
   const [empresaFilter, setEmpresaFilter] = useState('Todas')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState('cards')
@@ -26,25 +35,42 @@ export default function Dashboard() {
   // Régua controlada diretamente por HORAS (padrão 40 horas)
   const [alertaHoras, setAlertaHoras] = useState(40)
 
-  const [userRole, setUserRole] = useState(null)
-
+  // 1. Busca primeiro o perfil do usuário logado
   useEffect(() => {
     async function fetchUserRole() {
       const currentUser = auth.currentUser
-      if (currentUser) {
-        try {
-          const docRef = doc(db, 'users', currentUser.uid)
-          const docSnap = await getDoc(docRef)
-          if (docSnap.exists()) {
-            setUserRole(docSnap.data().role)
+      if (!currentUser) {
+        navigate('/login')
+        return
+      }
+      try {
+        const docRef = doc(db, 'users', currentUser.uid)
+        const docSnap = await getDoc(docRef)
+        if (docSnap.exists()) {
+          const userData = docSnap.data()
+          setUserRole(userData.role)
+          
+          if (userData.role !== 'supervisor' && userData.empresa) {
+            setUserEmpresa(userData.empresa)
+            setEmpresaFilter(userData.empresa) // Força o filtro padrão para a empresa dele
+          } else {
+            setUserEmpresa('Todas')
+            setEmpresaFilter('Todas')
           }
-        } catch (error) {
-          console.error('Erro ao buscar o perfil do usuário no painel:', error)
+        } else {
+          // Se o documento de usuário não existir no Firestore, desloga por segurança
+          console.error('Perfil de usuário não encontrado no banco.')
+          setUserRole('cliente')
+          setUserEmpresa('Nenhuma')
         }
+      } catch (error) {
+        console.error('Erro ao buscar o perfil do usuário no painel:', error)
+      } finally {
+        setLoadingUser(false)
       }
     }
     fetchUserRole()
-  }, [])
+  }, [navigate])
 
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00'
@@ -54,7 +80,16 @@ export default function Dashboard() {
   }
 
   const computed = useMemo(() => {
-    return drivers.map((driver) => {
+    // Se o perfil do usuário ainda não carregou, não processa nada
+    if (loadingUser) return []
+
+    // Filtra os motoristas com base na empresa permitida para o usuário logado
+    const driversFilteredByUserEmpresa = drivers.filter((driver) => {
+      if (userRole === 'supervisor' || userEmpresa === 'Todas') return true
+      return driver.empresa === userEmpresa
+    })
+
+    return driversFilteredByUserEmpresa.map((driver) => {
       const monthEntries = filterEntriesByMonth(entriesByDriver[driver.id] || [])
       let minutos75 = 0
       let minutos100 = 0
@@ -80,32 +115,39 @@ export default function Dashboard() {
         driver, 
         totalHours: totalFaturadoDecimal, 
         totalHoursStr: formatarParaRelogio(totalFaturadoDecimal), 
-        total75Str: formatarParaRelogio(total75Decimal), // 🌟 Novo campo calculado
-        total100Str: formatarParaRelogio(total100Decimal), // 🌟 Novo campo calculado
+        total75Str: formatarParaRelogio(total75Decimal), 
+        total100Str: formatarParaRelogio(total100Decimal), 
         usage 
       }
     })
-  }, [drivers, entriesByDriver])
+  }, [drivers, entriesByDriver, userRole, userEmpresa, loadingUser])
 
-  const filtered = computed
-    .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
-    .filter((c) => {
-      if (!search.trim()) return true
-      const q = search.toLowerCase()
-      return (
-        c.driver.name.toLowerCase().includes(q) ||
-        (c.driver.matricula || '').toLowerCase().includes(q)
-      )
-    })
+  // Filtra de acordo com a barra de busca e o filtro de empresa selecionado
+  const filtered = useMemo(() => {
+    return computed
+      .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
+      .filter((c) => {
+        if (!search.trim()) return true
+        const q = search.toLowerCase()
+        return (
+          c.driver.name.toLowerCase().includes(q) ||
+          (c.driver.matricula || '').toLowerCase().includes(q)
+        )
+      })
+  }, [computed, empresaFilter, search])
 
-  const sorted = [...filtered].sort((a, b) => b.totalHours - a.totalHours)
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => b.totalHours - a.totalHours)
+  }, [filtered])
   
   // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua
-  const alertedDrivers = filtered
-    .filter((c) => c.totalHours >= alertaHoras)
-    .sort((a, b) => b.totalHours - a.totalHours)
+  const alertedDrivers = useMemo(() => {
+    return filtered
+      .filter((c) => c.totalHours >= alertaHoras)
+      .sort((a, b) => b.totalHours - a.totalHours)
+  }, [filtered, alertaHoras])
 
-  const loading = loadingDrivers || loadingEntries
+  const loading = loadingDrivers || loadingEntries || loadingUser
 
   async function handleExport(type) {
     const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
@@ -120,6 +162,15 @@ export default function Dashboard() {
     } finally {
       setExporting(false)
     }
+  }
+
+  // Se estiver carregando as permissões do usuário, mostra tela de espera amigável
+  if (loadingUser) {
+    return (
+      <div className="p-8 text-center text-slate">
+        Autenticando e carregando perfil de acesso...
+      </div>
+    )
   }
 
   return (
@@ -162,19 +213,27 @@ export default function Dashboard() {
             placeholder="Buscar motorista por nome ou matrícula"
             className="w-full sm:max-w-xs rounded-lg border border-line px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
-          <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
-            {['Todas', ...EMPRESAS].map((option) => (
-              <button
-                key={option}
-                onClick={() => setEmpresaFilter(option)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition whitespace-nowrap ${
-                  empresaFilter === option ? 'bg-ink text-white' : 'text-slate hover:text-ink'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+          
+          {/* FILTRAGEM DE EMPRESAS: Apenas para Supervisores. Usuários comuns têm sua empresa fixada. */}
+          {userRole === 'supervisor' ? (
+            <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
+              {['Todas', ...EMPRESAS].map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setEmpresaFilter(option)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition whitespace-nowrap ${
+                    empresaFilter === option ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center px-3 py-2 bg-cloud border border-line rounded-lg text-sm text-slate font-medium w-fit">
+              Empresa: <span className="text-ink ml-1 font-semibold">{userEmpresa}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
@@ -275,7 +334,7 @@ export default function Dashboard() {
 
       {!loading && drivers.length > 0 && sorted.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-10 text-center">
-          <p className="text-slate">Nenhum motorista para o filtro selecionado.</p>
+          <p className="text-slate">Nenhum motorista cadastrado para a empresa {userEmpresa}.</p>
         </div>
       )}
 
@@ -287,8 +346,8 @@ export default function Dashboard() {
               driver={driver} 
               totalHours={totalHours} 
               totalHoursStr={totalHoursStr}
-              total75Str={total75Str} // 🌟 Enviando para o card
-              total100Str={total100Str} // 🌟 Enviando para o card
+              total75Str={total75Str}
+              total100Str={total100Str}
               usage={usage} 
             />
           ))}

@@ -6,11 +6,11 @@ export function useAllEntries(drivers) {
   const [entriesByDriver, setEntriesByDriver] = useState({})
   const [loading, setLoading] = useState(true)
 
-  // Criamos uma string com todos os IDs juntos (Ex: "id1,id2,id3")
-  // Essa string só vai mudar se um motorista for deletado ou adicionado de verdade!
-  const driversIdsKey = (drivers || []).map(d => d.id).join(',')
+  // Criamos uma string estável com todos os IDs juntos (Ex: "id1,id2,id3")
+  const driversIdsKey = (drivers || []).map(d => d.id).sort().join(',')
 
   useEffect(() => {
+    // Se não há motoristas para buscar, limpa o estado e para o loading
     if (!drivers || drivers.length === 0) {
       setEntriesByDriver({})
       setLoading(false)
@@ -19,42 +19,56 @@ export function useAllEntries(drivers) {
 
     setLoading(true)
     const unsubscribes = []
-    const currentEntriesMap = {}
-
-    // Criamos uma função para gerenciar o estado sem causar concorrência
-    let totalLoaded = 0
+    
+    // Conjunto para rastrear quais motoristas já tiveram seu primeiro carregamento concluído
+    const loadedDriversSet = new Set()
 
     drivers.forEach((driver) => {
       const ref = collection(db, 'drivers', driver.id, 'entries')
       const q = query(ref)
 
-      const unsub = onSnapshot(q, (snapshot) => {
-        currentEntriesMap[driver.id] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }))
+      const unsub = onSnapshot(
+        q, 
+        (snapshot) => {
+          const driverEntries = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
 
-        // Controla o loading inicial de forma segura
-        totalLoaded++
-        if (totalLoaded >= drivers.length) {
-          setLoading(false)
+          // Atualiza o estado de forma funcional e segura (preservando os dados antigos)
+          setEntriesByDriver((prev) => ({
+            ...prev,
+            [driver.id]: driverEntries
+          }))
+
+          // Registra que este motorista carregou seus dados pela primeira vez
+          loadedDriversSet.add(driver.id)
+
+          // Só removemos o loading geral se TODOS os motoristas da lista atual carregaram
+          if (loadedDriversSet.size >= drivers.length) {
+            setLoading(false)
+          }
+        }, 
+        (error) => {
+          console.error(`Erro ao escutar lançamentos do motorista ${driver.id}:`, error)
+          
+          // Mesmo se der erro em um motorista específico, computa para não travar o loading geral
+          loadedDriversSet.add(driver.id)
+          if (loadedDriversSet.size >= drivers.length) {
+            setLoading(false)
+          }
         }
-
-        // Atualiza o estado de forma estável
-        setEntriesByDriver({ ...currentEntriesMap })
-      }, (error) => {
-        console.error(`Erro ao escutar lançamentos do motorista ${driver.id}:`, error)
-      })
+      )
 
       unsubscribes.push(unsub)
     })
 
-    // Limpeza crucial: desliga todos ao sair da tela ou mudar os IDs
+    // Limpeza crucial ao desmontar ou quando a lista de motoristas mudar
     return () => {
       unsubscribes.forEach((unsub) => unsub())
     }
     
-  }, [driversIdsKey]) // USAMOS A STRING DE IDS AQUI! Adeus loops infinitos.
+  }, [driversIdsKey]) // Roda apenas quando a lista real de IDs mudar
 
   return {
     entriesByDriver,
