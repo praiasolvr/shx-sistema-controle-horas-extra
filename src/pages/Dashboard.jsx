@@ -20,6 +20,9 @@ export default function Dashboard() {
   const [exportScope, setExportScope] = useState('todos') // 'todos' | 'comHoras'
   const [exporting, setExporting] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
+  
+  // Novo estado para o limite de horas que ativa o alerta (porcentagem de uso)
+  const [alertaPorcentagem, setAlertaPorcentagem] = useState(75)
 
   // Função utilitária local para formatar o decimal em relógio HH:MM de forma precisa
   const formatarParaRelogio = (decimal) => {
@@ -78,26 +81,27 @@ export default function Dashboard() {
 
   const sorted = [...filtered].sort((a, b) => b.usage.percent - a.usage.percent)
 
+  // Agora filtra dinamicamente de acordo com a porcentagem selecionada pelo usuário
   const alertedDrivers = filtered
-    .filter((c) => c.usage.percent >= 75)
+    .filter((c) => c.usage.percent >= alertaPorcentagem)
     .sort((a, b) => b.usage.percent - a.usage.percent)
 
   const loading = loadingDrivers || loadingEntries
 
   async function handleExport(type) {
-  const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
-  const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
-  setExporting(true)
-  try {
-    if (type === 'excel') {
-      await exportExcel(rows, label, entriesByDriver) 
-    } else {
-      await exportPDF(rows, label)
+    const rows = exportScope === 'comHoras' ? sorted.filter((c) => c.totalHours > 0) : sorted
+    const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
+    setExporting(true)
+    try {
+      if (type === 'excel') {
+        await exportExcel(rows, label, entriesByDriver) 
+      } else {
+        await exportPDF(rows, label)
+      }
+    } finally {
+      setExporting(false)
     }
-  } finally {
-    setExporting(false)
   }
-}
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
@@ -162,28 +166,49 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Exportação e WhatsApp */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
-        <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
-          <button
-            onClick={() => setExportScope('todos')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
-              exportScope === 'todos' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
-            }`}
-          >
-            Todos
-          </button>
-          <button
-            onClick={() => setExportScope('comHoras')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
-              exportScope === 'comHoras' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
-            }`}
-          >
-            Somente c/ hora extra
-          </button>
+      {/* Exportação, WhatsApp e Novo Seletor de Alerta */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 flex-wrap">
+          {/* Seletor de exportação de dados */}
+          <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setExportScope('todos')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
+                exportScope === 'todos' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setExportScope('comHoras')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition whitespace-nowrap ${
+                exportScope === 'comHoras' ? 'bg-ink text-white' : 'text-slate hover:text-ink'
+              }`}
+            >
+              Somente c/ hora extra
+            </button>
+          </div>
+
+          {/* NOVO SELETOR: Definição da sensibilidade/alerta de limite */}
+          <div className="flex items-center gap-2 bg-cloud rounded-lg p-1 w-fit border border-line/40">
+            <span className="text-xs text-slate font-medium pl-2 pr-1">Régua do Alerta:</span>
+            {[30, 40, 50].map((pct) => (
+              <button
+                key={pct}
+                onClick={() => setAlertaPorcentagem(pct)}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition ${
+                  alertaPorcentagem === pct
+                    ? 'bg-ink text-white shadow-sm'
+                    : 'text-slate hover:text-ink hover:bg-cloud/50'
+                }`}
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2 sm:ml-auto flex-wrap">
+        <div className="flex gap-2 lg:ml-auto flex-wrap">
           <button
             onClick={() => handleExport('excel')}
             disabled={exporting || sorted.length === 0}
@@ -253,7 +278,6 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {sorted.map(({ driver, totalHoursStr, usage }) => {
-                // Modificado para prevenir erros caso o status falhe
                 const meta = STATUS_META[usage.status] || STATUS_META.ok
                 return (
                   <tr
@@ -266,7 +290,6 @@ export default function Dashboard() {
                       </Link>
                     </td>
                     <td className="px-5 py-3">
-                      {/* Trocado de ThemeBadge para EmpresaBadge para corrigir o erro */}
                       <EmpresaBadge empresa={driver.empresa} />
                     </td>
                     <td className="px-5 py-3 font-mono whitespace-nowrap">

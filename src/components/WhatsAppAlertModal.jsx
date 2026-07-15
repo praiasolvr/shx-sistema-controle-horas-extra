@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { formatHours } from '../utils/hours'
 import { buildWhatsAppLink } from '../utils/whatsapp'
 
 const DEFAULT_TEMPLATE = 'MOTORISTAS QUE ESTÃO ATINGINDO O LIMITE:'
@@ -9,17 +8,27 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
   // Estado para armazenar o número customizado que receberá o alerta
   const [targetPhone, setTargetPhone] = useState('')
 
-  // Constrói o texto completo unindo o título + a listagem dos motoristas com quebras de linha
+  // Função local e precisa para formatar o decimal em formato relógio (HH:MM)
+  const formatarParaRelogio = (decimal) => {
+    if (!decimal || decimal <= 0) return '00:00'
+    const h = Math.floor(decimal)
+    const m = Math.round((decimal - h) * 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
+  // Constrói o texto completo unindo o título + a listagem dos motoristas com formato corrigido
   const fullMessage = useMemo(() => {
     let text = `${messageHeader}\n\n`
 
     if (alertedDrivers.length === 0) {
       text += 'Nenhum motorista atingindo o limite no momento.'
     } else {
-      alertedDrivers.forEach(({ driver, usage, totalHours }) => {
-        text += `• *${driver.name}* (${driver.empresa || 'Sem Empresa'})\n`
-        text += `  Progresso: ${usage.percent.toFixed(0)}%\n`
-        text += `  Horas: ${formatHours(totalHours)} de ${formatHours(driver.maxHours)} permitidas\n\n`
+      alertedDrivers.forEach(({ driver, totalHours }) => {
+        const matriculaStr = driver.matricula ? ` · #${driver.matricula}` : ''
+        const horasFormatadas = formatarParaRelogio(totalHours)
+        
+        // Exemplo de saída: • *Nome do Motorista* (Empresa · #Matricula): *60:20h*
+        text += `• *${driver.name}* (${driver.empresa || 'Sem Empresa'}${matriculaStr}): *${horasFormatadas}h*\n`
       })
     }
 
