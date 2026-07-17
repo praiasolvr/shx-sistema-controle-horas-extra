@@ -1,58 +1,81 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import RouteProgress from './RouteProgress'
 import EmpresaBadge from './EmpresaBadge'
 import { STATUS_META } from '../utils/hours'
 
 export default function DriverCard({ driver, totalHoursStr, total75Str = '00:00', total100Str = '00:00', usage }) {
+  const navigate = useNavigate()
   const meta = STATUS_META[usage.status] || STATUS_META.ok
 
-  const formatarParaRelogio = (decimal) => {
-    if (!decimal || decimal <= 0) return '00:00'
-    const h = Math.floor(decimal)
-    const m = Math.round((decimal - h) * 60)
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-  }
-
   return (
-    <div className="bg-white rounded-xl border border-line p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+    <article className="bg-white rounded-xl border border-line p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between group">
       <div>
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <Link to={`/motoristas/${driver.id}`} className="font-display font-semibold text-lg hover:underline text-ink">
+        {/* Cabeçalho do Card */}
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="max-w-[70%]">
+            <h3 className="font-display font-bold text-base text-ink tracking-tight truncate" title={driver.name}>
               {driver.name}
-            </Link>
-            <p className="text-xs text-slate mt-0.5">Matrícula: {driver.matricula || 'N/D'}</p>
+            </h3>
+            <p className="text-xs text-slate mt-0.5">
+              Matrícula: <span className="font-mono bg-cloud px-1.5 py-0.5 rounded text-slate-700">{driver.matricula || 'N/D'}</span>
+            </p>
           </div>
-          <EmpresaBadge empresa={driver.empresa} />
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <EmpresaBadge empresa={driver.empresa} />
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${meta.bg || 'bg-cloud'} ${meta.text || 'text-slate'} ${meta.border || 'border-line'}`}>
+              {meta.label}
+            </span>
+          </div>
         </div>
 
-        {/* Progresso visual */}
-        <div className="my-4">
-          <div className="flex justify-between text-xs font-semibold mb-1">
-            <span className="text-slate">Acumulado do mês</span>
-            <span className={meta.text}>{meta.label} ({usage.percent}%)</span>
+        {/* Bloco de Progresso Otimizado */}
+        <div className="mb-5 bg-cloud/40 rounded-lg p-3 border border-line/40">
+          <div className="flex justify-between items-center text-xs mb-1.5">
+            <span className="font-medium text-slate-600">Uso do teto mensal</span>
+            <span className={`font-mono font-bold ${meta.text}`}>
+              {Math.round(usage.percent)}%
+            </span>
           </div>
-          <RouteProgress percent={usage.percent} status={usage.status} />
+          <RouteProgress percent={usage.percent} status={usage.status} compact />
         </div>
       </div>
 
-      {/* Caixa de detalhes de Horas */}
-      <div className="border-t border-line/60 pt-3 mt-2">
-        <div className="grid grid-cols-3 gap-2 text-center">
+      {/* Rodapé: Métricas + Botão de Ação */}
+      <div className="space-y-4">
+        {/* Painel de Horas Detalhado */}
+        <div className="grid grid-cols-3 gap-1 text-center border-y border-line/60 py-3">
           <div>
-            <div className="text-[10px] uppercase font-mono tracking-wider text-slate">Total Geral</div>
-            <div className="font-mono font-bold text-base text-ink">{totalHoursStr}h</div>
+            <span className="text-[9px] uppercase font-bold tracking-wider text-slate block">Total Geral</span>
+            <span className="font-mono font-bold text-base text-ink block mt-0.5">{totalHoursStr}h</span>
           </div>
-          <div className="border-l border-line/60">
-            <div className="text-[10px] uppercase font-mono tracking-wider text-slate">Extras 75%</div>
-            <div className="font-mono font-semibold text-sm text-slate-800">{total75Str}h</div>
+          <div className="border-x border-line/60 px-1">
+            <span className="text-[9px] uppercase font-bold tracking-wider text-slate block">Extras 75%</span>
+            <span className="font-mono font-semibold text-sm text-slate-700 block mt-0.5">{total75Str}h</span>
           </div>
-          <div className="border-l border-line/60">
-            <div className="text-[10px] uppercase font-mono tracking-wider text-slate">Extras 100%</div>
-            <div className="font-mono font-semibold text-sm text-slate-800">{total100Str}h</div>
+          <div>
+            <span className="text-[9px] uppercase font-bold tracking-wider text-slate block">Extras 100%</span>
+            <span className="font-mono font-semibold text-sm text-slate-700 block mt-0.5">{total100Str}h</span>
           </div>
         </div>
+
+        {/* Botão de Ver Detalhes */}
+        <button
+          onClick={() => navigate(`/motoristas/${driver.id}`)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-line bg-white hover:bg-[#040a18] hover:border-[#040a18] hover:text-white text-slate-700 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-sm"
+        >
+          <span>Ver Detalhes</span>
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            strokeWidth={2.5} 
+            stroke="currentColor" 
+            className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+          </svg>
+        </button>
       </div>
-    </div>
+    </article>
   )
 }

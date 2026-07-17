@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useDrivers } from '../hooks/useDrivers'
 import { useHourEntries } from '../hooks/useHourEntries'
 import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase'
+import { collection, getDocs } from 'firebase/firestore'
 import {
   filterEntriesByMonth,
   monthLabel,
@@ -23,6 +25,26 @@ export default function LaunchHours() {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState(searchParams.get('motorista') || '')
   const [deletingEntry, setDeletingEntry] = useState(null)
+  
+  // Novo estado para armazenar os usuários cadastrados e cruzar as matrículas
+  const [systemUsers, setSystemUsers] = useState([])
+
+  // Busca todos os usuários do sistema para obter as matrículas em tempo de execução
+  useEffect(() => {
+    async function fetchSystemUsers() {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'))
+        const usersList = []
+        querySnapshot.forEach((doc) => {
+          usersList.push({ id: doc.id, ...doc.data() })
+        })
+        setSystemUsers(usersList)
+      } catch (error) {
+        console.error('Erro ao buscar usuários do sistema:', error)
+      }
+    }
+    fetchSystemUsers()
+  }, [])
 
   // Ajusta o filtro inicial baseado no cargo e empresa do usuário logado
   useEffect(() => {
@@ -263,34 +285,53 @@ export default function LaunchHours() {
                       </tr>
                     </thead>
                     <tbody>
-                      {entries.slice(0, 15).map((entry) => (
-                        <tr key={entry.id} className="border-b border-line last:border-0">
-                          <td className="px-5 py-2">
-                            {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-5 py-2 font-mono text-ink font-semibold">
-                            {formatarParaRelogio(entry.hours)}h
-                          </td>
-                          <td className="px-5 py-2 text-slate text-xs">{entry.note || '—'}</td>
-                          
-                          <td className="px-5 py-2 text-xs">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-cloud text-slate-700">
-                              {entry.createdByName || entry.createdByEmail?.split('@')[0] || 'Sistema'}
-                            </span>
-                          </td>
+                      {entries.slice(0, 15).map((entry) => {
+                        const lancadorNome = entry.createdByName || entry.createdByEmail?.split('@')[0] || 'Sistema';
 
-                          {canWrite && (
-                            <td className="px-5 py-2 text-right">
-                              <button
-                                onClick={() => setDeletingEntry(entry)}
-                                className="text-alert hover:text-alert/80 text-xs font-medium"
-                              >
-                                Excluir
-                              </button>
+                        // Faz o cruzamento na memória para encontrar a matrícula do usuário correspondente
+                        const usuarioCorrespondente = systemUsers.find(
+                          (u) =>
+                            (entry.createdByName && u.name?.toLowerCase() === entry.createdByName.toLowerCase()) ||
+                            (entry.createdByEmail && u.email?.toLowerCase() === entry.createdByEmail.toLowerCase())
+                        );
+
+                        const matriculaEncontrada = usuarioCorrespondente?.matricula;
+
+                        return (
+                          <tr key={entry.id} className="border-b border-line last:border-0 hover:bg-cloud/10">
+                            <td className="px-5 py-2">
+                              {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
                             </td>
-                          )}
-                        </tr>
-                      ))}
+                            <td className="px-5 py-2 font-mono text-ink font-semibold">
+                              {formatarParaRelogio(entry.hours)}h
+                            </td>
+                            <td className="px-5 py-2 text-slate text-xs">{entry.note || '—'}</td>
+                            
+                            {/* AJUSTE AQUI: EXIBE O NOME E A MATRÍCULA SE ENCONTRADA */}
+                            <td className="px-5 py-2 text-xs">
+                              <div className="flex flex-col gap-0.5 justify-center">
+                                <span className="font-medium text-ink">{lancadorNome}</span>
+                                {matriculaEncontrada && (
+                                  <span className="font-mono text-[9px] font-semibold text-slate bg-cloud px-1 rounded border border-line/60 w-fit">
+                                    Mtr: {matriculaEncontrada}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {canWrite && (
+                              <td className="px-5 py-2 text-right">
+                                <button
+                                  onClick={() => setDeletingEntry(entry)}
+                                  className="text-alert hover:text-alert/80 text-xs font-medium"
+                                >
+                                  Excluir
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 )}

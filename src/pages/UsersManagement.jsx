@@ -20,6 +20,7 @@ export default function UsersManagement() {
   const [editingId, setEditingId] = useState('')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
+  const [matricula, setMatricula] = useState('') // Novo estado para matrícula
   const [role, setRole] = useState('lancador')
   const [empresa, setEmpresa] = useState('') // Estado da empresa destinada
   const [password, setPassword] = useState('') // Estado da Senha
@@ -93,6 +94,7 @@ export default function UsersManagement() {
         await updateDoc(userRef, {
           name: nome,
           email: email,
+          matricula: matricula.trim(), // Atualiza a matrícula no banco
           role: role,
           empresa: empresa // Salva a alteração da empresa
         })
@@ -115,6 +117,7 @@ export default function UsersManagement() {
         await setDoc(doc(db, 'users', newUid), {
           name: nome,
           email: email,
+          matricula: matricula.trim(), // Salva a matrícula no novo registro
           role: role,
           empresa: empresa, // Salva a empresa selecionada
           createdAt: new Date().toISOString()
@@ -141,6 +144,7 @@ export default function UsersManagement() {
     setEditingId(user.id)
     setNome(user.name)
     setEmail(user.email)
+    setMatricula(user.matricula || '') // Carrega a matrícula atual
     setRole(user.role || 'lancador')
     setEmpresa(user.empresa || '') // Carrega a empresa atual no form
     setPassword('') // Limpa o campo de senha durante a edição
@@ -164,6 +168,7 @@ export default function UsersManagement() {
     setEditingId('')
     setNome('')
     setEmail('')
+    setMatricula('') // Limpa o campo de matrícula
     setRole('lancador')
     setEmpresa('')
     setPassword('')
@@ -223,13 +228,25 @@ export default function UsersManagement() {
             <div>
               <label className="block text-xs font-medium text-slate uppercase mb-1">E-mail</label>
               <input
-                type="email"
+                type="type"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="carlos@empresa.com"
                 className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
                 required
                 disabled={isEditing}
+              />
+            </div>
+
+            {/* Novo Campo Inserido: Matrícula */}
+            <div>
+              <label className="block text-xs font-medium text-slate uppercase mb-1">Matrícula </label>
+              <input
+                type="text"
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                placeholder="Ex: MTR-9984"
+                className="w-full rounded-lg border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
             </div>
 
@@ -261,7 +278,7 @@ export default function UsersManagement() {
               </select>
             </div>
 
-            {/* Campo corrigido: Destinação de Empresa chamando setEmpresa */}
+            {/* Campo: Destinação de Empresa chamando setEmpresa */}
             <div>
               <label className="block text-xs font-medium text-slate uppercase mb-1">Empresa Designada</label>
               <select
@@ -317,7 +334,14 @@ export default function UsersManagement() {
                   <tr key={user.id} className="border-b border-line last:border-0 hover:bg-cloud/30">
                     <td className="px-5 py-3">
                       <p className="font-medium">{user.name}</p>
-                      <p className="text-xs text-slate">{user.email}</p>
+                      <div className="text-xs text-slate space-y-0.5">
+                        <p>{user.email}</p>
+                        {user.matricula && (
+                          <p className="font-mono text-[11px] text-ink bg-cloud px-1.5 py-0.5 rounded w-fit">
+                            Matrícula: {user.matricula}
+                          </p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">

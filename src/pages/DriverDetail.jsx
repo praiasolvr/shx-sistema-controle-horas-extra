@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { auth, db } from '../firebase'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
 import { useDrivers } from '../hooks/useDrivers'
 import { useHourEntries } from '../hooks/useHourEntries'
 import { monthLabel, STATUS_META } from '../utils/hours'
@@ -23,12 +23,16 @@ export default function DriverDetail() {
   const [userRole, setUserRole] = useState(null)
   const [userEmpresa, setUserEmpresa] = useState('')
   const [loadingUser, setLoadingUser] = useState(true)
+  
+  // Novo estado para armazenar o mapeamento de usuários para auditoria de matrícula
+  const [systemUsers, setSystemUsers] = useState([])
 
   useEffect(() => {
-    async function fetchUserRole() {
+    async function fetchInitialData() {
       const currentUser = auth.currentUser
       if (currentUser) {
         try {
+          // 1. Busca perfil do usuário logado
           const docRef = doc(db, 'users', currentUser.uid)
           const docSnap = await getDoc(docRef)
           if (docSnap.exists()) {
@@ -36,8 +40,17 @@ export default function DriverDetail() {
             setUserRole(userData.role)
             setUserEmpresa(userData.empresa || '')
           }
+
+          // 2. Busca todos os usuários do sistema para cruzar e descobrir as matrículas
+          const usersSnapshot = await getDocs(collection(db, 'users'))
+          const usersList = []
+          usersSnapshot.forEach((doc) => {
+            usersList.push({ id: doc.id, ...doc.data() })
+          })
+          setSystemUsers(usersList)
+
         } catch (error) {
-          console.error('Erro ao buscar perfil do usuário no detalhe:', error)
+          console.error('Erro ao buscar dados iniciais no detalhe:', error)
         } finally {
           setLoadingUser(false)
         }
@@ -45,7 +58,7 @@ export default function DriverDetail() {
         setLoadingUser(false)
       }
     }
-    fetchUserRole()
+    fetchInitialData()
   }, [])
 
   const driver = drivers.find((d) => d.id === id)
@@ -71,7 +84,6 @@ export default function DriverDetail() {
     let minutos75 = 0
     let minutos100 = 0
 
-    // Separação dia a dia exata por minutos
     monthEntries.forEach((entry) => {
       const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
       const limite2HorasEmMinutos = 120
@@ -90,7 +102,6 @@ export default function DriverDetail() {
     const maxHours = Number(driver.maxHours) || 40
     const percent = maxHours > 0 ? (totalFaturadoDecimal / maxHours) * 100 : 0
 
-    // Define o status seguindo fielmente as chaves do seu STATUS_META em utils/hours.js
     let status = 'ok'
     if (percent >= 100) status = 'excedido'
     else if (percent >= 90) status = 'critico'
@@ -110,7 +121,7 @@ export default function DriverDetail() {
   if (loadingUser) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-        <p className="text-slate">Carregando permissões...</p>
+        <p className="text-slate">Carregando permissões e dados...</p>
       </div>
     )
   }
@@ -126,7 +137,6 @@ export default function DriverDetail() {
     )
   }
 
-  // Barreira de Segurança: Se não for supervisor e tentar ver motorista de outra empresa, bloqueia o acesso
   const isSupervisor = userRole === 'supervisor'
   const belongsToSameEmpresa = driver.empresa === userEmpresa
 
@@ -151,7 +161,6 @@ export default function DriverDetail() {
     navigate('/motoristas')
   }
 
-  // Fallback seguro caso dê divergência futura
   const meta = STATUS_META[computedUsage.status] || STATUS_META.ok
 
   return (
@@ -180,7 +189,6 @@ export default function DriverDetail() {
             Lançar horas
           </Link>
           
-          {/* Ações restritas: Apenas supervisores editam ou excluem motoristas */}
           {isSupervisor && (
             <>
               <button
@@ -200,7 +208,6 @@ export default function DriverDetail() {
         </div>
       </div>
 
-      {/* Card Informativo Mensal Dinâmico */}
       <div className={`rounded-xl border p-5 mb-6 bg-white shadow-card ring-1 ${meta.ring || 'border-line'}`}>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-mono uppercase tracking-wide text-slate">{monthLabel()}</p>
@@ -212,7 +219,6 @@ export default function DriverDetail() {
         </div>
         <RouteProgress percent={computedUsage.percent} status={computedUsage.status} />
 
-        {/* Distribuição das Horas (75% e 100%) */}
         <div className="grid grid-cols-2 gap-4 border-t border-line/60 pt-4 mt-4">
           <div>
             <p className="text-[10px] uppercase font-mono tracking-wider text-slate">Horas Regime 75%</p>
@@ -238,38 +244,74 @@ export default function DriverDetail() {
             </Link>
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate border-b border-line">
-                <th className="px-5 py-2 font-medium">Data</th>
-                <th className="px-5 py-2 font-medium font-mono">Horas</th>
-                <th className="px-5 py-2 font-medium">Observação</th>
-                <th className="px-5 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr key={entry.id} className="border-b border-line last:border-0 hover:bg-cloud/20">
-                  <td className="px-5 py-2">
-                    {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="px-5 py-2 font-mono">{formatarParaRelogio(entry.hours)}h</td>
-                  <td className="px-5 py-2 text-slate">{entry.note || '—'}</td>
-                  <td className="px-5 py-2 text-right">
-                    {/* Apenas supervisores podem excluir lançamentos do histórico */}
-                    {isSupervisor && (
-                      <button
-                        onClick={() => setDeletingEntry(entry)}
-                        className="text-alert hover:text-alert/80 text-xs font-medium"
-                      >
-                        Excluir
-                      </button>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[500px]">
+              <thead>
+                <tr className="text-left text-slate border-b border-line bg-cloud/30">
+                  <th className="px-5 py-3 font-medium">Data</th>
+                  <th className="px-5 py-3 font-medium font-mono">Horas</th>
+                  <th className="px-5 py-3 font-medium">Observação</th>
+                  <th className="px-5 py-3 font-medium">Lançado por</th>
+                  <th className="px-5 py-3"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {entries.map((entry) => {
+                  const lancadorNome = entry.launchedBy || entry.createdByName || entry.createdByEmail;
+                  
+                  // Busca no array de usuários cadastrados se há alguém com o mesmo nome ou email do lançamento
+                  const usuarioCorrespondente = systemUsers.find(
+                    (u) => 
+                      (entry.createdByName && u.name?.toLowerCase() === entry.createdByName.toLowerCase()) ||
+                      (entry.createdByEmail && u.email?.toLowerCase() === entry.createdByEmail.toLowerCase())
+                  );
+
+                  const matriculaEncontrada = usuarioCorrespondente?.matricula;
+
+                  return (
+                    <tr key={entry.id} className="border-b border-line last:border-0 hover:bg-cloud/20">
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-5 py-3.5 font-mono font-medium">{formatarParaRelogio(entry.hours)}h</td>
+                      <td className="px-5 py-3.5 text-slate max-w-[200px] truncate" title={entry.note}>
+                        {entry.note || '—'}
+                      </td>
+                      
+                      {/* CRUZA O PROPRIETÁRIO DO LANÇAMENTO COM A MATRÍCULA DO CADASTRO EM TEMPO REAL */}
+                      <td className="px-5 py-3.5 text-ink">
+                        {lancadorNome ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-sm">{lancadorNome}</span>
+                            {matriculaEncontrada ? (
+                              <span className="font-mono text-[10px] font-semibold text-slate bg-cloud px-1.5 py-0.5 rounded w-fit border border-line">
+                                Mtr: {matriculaEncontrada}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate/60 italic">Sem Matrícula</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-light italic text-xs">Desconhecido</span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                        {isSupervisor && (
+                          <button
+                            onClick={() => setDeletingEntry(entry)}
+                            className="text-alert hover:text-alert/80 text-xs font-semibold uppercase tracking-wider"
+                          >
+                            Excluir
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
