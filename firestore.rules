@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função auxiliar para ler os dados do usuário logado (perfil)
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Função auxiliar para verificar se é um supervisor autenticado
+    function isSupervisor() {
+      return request.auth != null && getUserData().role == 'supervisor';
+    }
+
+    // Função auxiliar para verificar se é Lançador ou Supervisor
+    function isAdminOrSupervisor() {
+      return request.auth != null && getUserData().role in ['lancador', 'supervisor'];
+    }
+
+    // Regras para a coleção de usuários (users)
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && (userId == request.auth.uid || isSupervisor());
+      allow update: if request.auth != null && (userId == request.auth.uid || isSupervisor());
+      allow delete: if isSupervisor();
+    }
+
+    // Regras para os Motoristas (drivers)
+    match /drivers/{driverId} {
+      allow read: if request.auth != null && (isAdminOrSupervisor() || getUserData().role == 'rh');
+      allow write: if request.auth != null && isAdminOrSupervisor();
+      
+      match /entries/{entryId} {
+        allow read: if request.auth != null && (isAdminOrSupervisor() || getUserData().role == 'rh');
+        allow write: if request.auth != null && isAdminOrSupervisor();
+      }
+    }
+
+    // ==========================================
+    // NOVA REGRA ADICIONADA PARA O COLLECTION GROUP
+    // ==========================================
+    match /{path=**}/entries/{entryId} {
+      allow read: if request.auth != null && (isAdminOrSupervisor() || getUserData().role == 'rh');
+      allow write: if request.auth != null && isAdminOrSupervisor();
+    }
+  }
+}

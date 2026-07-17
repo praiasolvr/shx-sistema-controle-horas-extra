@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { LayoutDashboard, FileClock, Users, UserCog, LogOut } from "lucide-react";
+import { LayoutDashboard, FileClock, Users, UserCog, LogOut, FileText } from "lucide-react";
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -63,6 +63,14 @@ export default function Sidebar() {
         >
           <Users className="w-5 h-5" />
           <span>Motoristas</span>
+        </NavLink>
+
+        <NavLink
+          to="/reports"
+          className={`${linkClass} flex items-center gap-2`}
+        >
+          <FileText className="w-5 h-5" />
+          <span>Relatórios</span>
         </NavLink>
 
         {/* EXCLUSIVO: Exibir Gestão de Usuários apenas se o logado for Supervisor */}
