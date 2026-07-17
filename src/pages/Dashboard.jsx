@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import Chart from 'react-apexcharts'
 import { auth, db } from '../firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { useDrivers } from '../hooks/useDrivers'
@@ -7,6 +8,9 @@ import { useAllEntries } from '../hooks/useAllEntries'
 import { getUsage, monthLabel, filterEntriesByMonth, STATUS_META } from '../utils/hours'
 import { EMPRESAS } from '../utils/constants'
 import { exportExcel, exportPDF } from '../utils/export'
+import { Download } from 'lucide-react'
+import { FaRegFilePdf } from "react-icons/fa6"
+import { FaWhatsapp } from "react-icons/fa"
 import DriverCard from '../components/DriverCard'
 import EmpresaBadge from '../components/EmpresaBadge'
 import AlertBanner from '../components/AlertBanner'
@@ -18,7 +22,7 @@ export default function Dashboard() {
   
   // Estados de controle de acesso do usuário logado
   const [userRole, setUserRole] = useState(null)
-  const [userEmpresa, setUserEmpresa] = useState(null) // Inicializa como null para sabermos quando terminou de carregar
+  const [userEmpresa, setUserEmpresa] = useState(null) 
   const [loadingUser, setLoadingUser] = useState(true)
 
   // Só ativa a busca de motoristas e lançamentos quando o perfil do usuário for totalmente carregado
@@ -52,13 +56,12 @@ export default function Dashboard() {
           
           if (userData.role !== 'supervisor' && userData.empresa) {
             setUserEmpresa(userData.empresa)
-            setEmpresaFilter(userData.empresa) // Força o filtro padrão para a empresa dele
+            setEmpresaFilter(userData.empresa) 
           } else {
             setUserEmpresa('Todas')
             setEmpresaFilter('Todas')
           }
         } else {
-          // Se o documento de usuário não existir no Firestore, desloga por segurança
           console.error('Perfil de usuário não encontrado no banco.')
           setUserRole('cliente')
           setUserEmpresa('Nenhuma')
@@ -66,7 +69,7 @@ export default function Dashboard() {
       } catch (error) {
         console.error('Erro ao buscar o perfil do usuário no painel:', error)
       } finally {
-        loadingUser && setLoadingUser(false)
+        if (loadingUser) setLoadingUser(false)
       }
     }
     fetchUserRole()
@@ -80,10 +83,8 @@ export default function Dashboard() {
   }
 
   const computed = useMemo(() => {
-    // Se o perfil do usuário ainda não carregou, não processa nada
     if (loadingUser) return []
 
-    // Filtra os motoristas com base na empresa permitida para o usuário logado
     const driversFilteredByUserEmpresa = drivers.filter((driver) => {
       if (userRole === 'supervisor' || userEmpresa === 'Todas') return true
       return driver.empresa === userEmpresa
@@ -127,7 +128,6 @@ export default function Dashboard() {
     return computed
       .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
       .filter((c) => {
-        // Se a opção "Somente c/ hora extra" estiver ativa, oculta quem tem 0 horas
         if (exportScope === 'comHoras') {
           return c.totalHours > 0
         }
@@ -148,17 +148,108 @@ export default function Dashboard() {
     return [...filtered].sort((a, b) => a.driver.name.localeCompare(b.driver.name))
   }, [filtered])
   
-  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua (ordenados em ordem alfabética)
+  // Limitação inteligente para exibir apenas 10 cards/linhas por vez na UI do Dashboard
+  const top10Exibidos = useMemo(() => {
+    return sorted.slice(0, 10)
+  }, [sorted])
+
+  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua
   const alertedDrivers = useMemo(() => {
     return filtered
       .filter((c) => c.totalHours >= alertaHoras)
       .sort((a, b) => a.driver.name.localeCompare(b.driver.name))
   }, [filtered, alertaHoras])
 
+  // --- MODELAGEM DOS GRÁFICOS APEXCHARTS ---
+  const analytics = useMemo(() => {
+    const currentScopeData = computed.filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
+    
+    let totalAcumuladoDecimal = 0
+    let motoristasAtivosComHoras = 0
+    let statusOk = 0
+    let statusAtencao = 0
+    let statusCritico = 0
+    let statusExcedido = 0
+
+    currentScopeData.forEach(item => {
+      totalAcumuladoDecimal += item.totalHours
+      if (item.totalHours > 0) motoristasAtivosComHoras++
+      
+      if (item.usage.status === 'atencao') statusAtencao++
+      else if (item.usage.status === 'critico') statusCritico++
+      else if (item.usage.status === 'excedido') statusExcedido++
+      else statusOk++
+    })
+
+    const mediaPorCondutor = currentScopeData.length > 0 ? (totalAcumuladoDecimal / currentScopeData.length) : 0
+    const motoristasCriticosTotal = statusCritico + statusExcedido
+
+    const rankingTop5 = [...currentScopeData]
+      .filter(item => item.totalHours > 0)
+      .sort((a, b) => b.totalHours - a.totalHours)
+      .slice(0, 5)
+
+    const donutConfig = {
+      series: [statusOk, statusAtencao, statusCritico, statusExcedido],
+      options: {
+        chart: { type: 'donut', id: 'status-frota-chart' },
+        labels: ['Normal (OK)', 'Atenção', 'Crítico', 'Excedido'],
+        colors: ['#10B981', '#F59E0B', '#EF4444', '#7F1D1D'],
+        legend: { position: 'bottom' },
+        dataLabels: { enabled: true },
+        plotOptions: {
+          pie: {
+            donut: {
+              labels: {
+                show: true,
+                total: { show: true, label: 'Frota', formatter: () => currentScopeData.length }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const barConfig = {
+      series: [{
+        name: 'Horas Acumuladas',
+        data: rankingTop5.map(item => Math.round(item.totalHours))
+      }],
+      options: {
+        chart: { type: 'bar', id: 'top-ranking-chart', toolbar: { show: false } },
+        colors: ['#040a18'],
+        plotOptions: {
+          bar: { borderRadius: 4, horizontal: true, barHeight: '55%' }
+        },
+        dataLabels: {
+          enabled: true,
+          formatter: function (val, opts) {
+            const index = opts.dataPointIndex
+            return rankingTop5[index] ? rankingTop5[index].totalHoursStr + 'h' : val + 'h'
+          }
+        },
+        xaxis: {
+          categories: rankingTop5.map(item => item.driver.name)
+        },
+        grid: { borderColor: '#E2E8F0', strokeDashArray: 4 }
+      }
+    }
+
+    return {
+      totalAcumuladoStr: formatarParaRelogio(totalAcumuladoDecimal),
+      mediaPorCondutorStr: formatarParaRelogio(mediaPorCondutor),
+      motoristasAtivosComHoras,
+      motoristasCriticos: motoristasCriticosTotal,
+      donutConfig,
+      barConfig,
+      temDadosRanking: rankingTop5.length > 0
+    }
+  }, [computed, empresaFilter])
+
   const loading = loadingDrivers || loadingEntries || loadingUser
 
   async function handleExport(type) {
-    const rows = sorted // Já está filtrada e ordenada de forma correta pelas opções da tela
+    const rows = sorted 
     const label = `${empresaFilter}${exportScope === 'comHoras' ? '-com-hora-extra' : ''}`
     setExporting(true)
     try {
@@ -172,7 +263,6 @@ export default function Dashboard() {
     }
   }
 
-  // Se estiver carregando as permissões do usuário, mostra tela de espera amigável
   if (loadingUser) {
     return (
       <div className="p-8 text-center text-slate">
@@ -182,8 +272,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <p className="text-xs font-mono uppercase tracking-wide text-slate mb-1">
             {monthLabel()}
@@ -213,7 +303,7 @@ export default function Dashboard() {
       <AlertBanner alertedDrivers={alertedDrivers} alertaHoras={alertaHoras} />
 
       {/* Filtros */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">
           <input
             value={search}
@@ -222,7 +312,6 @@ export default function Dashboard() {
             className="w-full sm:max-w-xs rounded-lg border border-line px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink/20"
           />
           
-          {/* FILTRAGEM DE EMPRESAS: Apenas para Supervisores. Usuários comuns têm sua empresa fixada. */}
           {userRole === 'supervisor' ? (
             <div className="flex gap-1.5 bg-white border border-line rounded-lg p-1 w-fit">
               {['Todas', ...EMPRESAS].map((option) => (
@@ -265,7 +354,7 @@ export default function Dashboard() {
       </div>
 
       {/* Exportação, WhatsApp e Régua de Alerta */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6 bg-white border border-line rounded-lg p-3">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-white border border-line rounded-lg p-3 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 flex-wrap">
           <div className="flex gap-1.5 bg-cloud rounded-lg p-1 w-fit">
             <button
@@ -304,110 +393,213 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Botões Otimizados com Ícones Corrigidos e Alinhados */}
         <div className="flex gap-2 lg:ml-auto flex-wrap">
           <button
             onClick={() => handleExport('excel')}
             disabled={exporting || sorted.length === 0}
-            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
+            className="flex items-center justify-center gap-2 border border-line rounded-lg px-4 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40 shadow-sm"
           >
-            Exportar Excel
+            <Download className="w-4 h-4 shrink-0" />
+            <span>Exportar Excel</span>
           </button>
+
           <button
             onClick={() => handleExport('pdf')}
             disabled={exporting || sorted.length === 0}
-            className="border border-line rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40"
+            className="flex items-center justify-center gap-2 border border-line rounded-lg px-4 py-2 text-sm font-medium text-ink hover:bg-cloud transition disabled:opacity-40 shadow-sm"
           >
-            Exportar PDF
+            <FaRegFilePdf className="w-4 h-4 shrink-0 text-red-600" />
+            <span>Exportar PDF</span>
           </button>
+
           <button
             onClick={() => setShowWhatsApp(true)}
             disabled={alertedDrivers.length === 0}
-            className="bg-signal text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-signal/90 transition disabled:opacity-40"
+            className="flex items-center justify-center gap-2 bg-signal text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-signal/90 transition disabled:opacity-40 shadow-sm"
           >
-            Avisar por WhatsApp{alertedDrivers.length > 0 ? ` (${alertedDrivers.length})` : ''}
+            <FaWhatsapp className="w-4 h-4 shrink-0 text-white" />
+            <span>Avisar por WhatsApp{alertedDrivers.length > 0 ? ` (${alertedDrivers.length})` : ''}</span>
           </button>
         </div>
       </div>
 
-      {loading && <p className="text-slate">Carregando dados…</p>}
-
-      {!loading && drivers.length === 0 && (
-        <div className="bg-white rounded-xl shadow-card p-10 text-center">
-          <p className="font-display text-xl mb-1">Nenhum motorista cadastrado</p>
-          <p className="text-sm text-slate">
-            Vá até "Motoristas" para adicionar o primeiro motorista da frota.
-          </p>
+      {/* SEÇÃO MONITORADOS (EXIBE MÁXIMO 10 REGISTROS) */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center px-1">
+          <h2 className="text-xs font-bold text-slate uppercase tracking-wider">
+            Motoristas Ativos ({top10Exibidos.length} de {sorted.length})
+          </h2>
         </div>
-      )}
 
-      {!loading && drivers.length > 0 && sorted.length === 0 && (
-        <div className="bg-white rounded-xl shadow-card p-10 text-center">
-          <p className="text-slate">Nenhum motorista cadastrado ou com horas extras para exibir.</p>
-        </div>
-      )}
+        {loading && <p className="text-slate text-center py-4">Carregando dados…</p>}
 
-      {!loading && sorted.length > 0 && viewMode === 'cards' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map(({ driver, totalHours, totalHoursStr, total75Str, total100Str, usage }) => (
-            <DriverCard 
-              key={driver.id} 
-              driver={driver} 
-              totalHours={totalHours} 
-              totalHoursStr={totalHoursStr}
-              total75Str={total75Str}
-              total100Str={total100Str}
-              usage={usage} 
-            />
-          ))}
-        </div>
-      )}
+        {!loading && drivers.length === 0 && (
+          <div className="bg-white rounded-xl shadow-card p-10 text-center border border-line">
+            <p className="font-display text-xl mb-1">Nenhum motorista cadastrado</p>
+            <p className="text-sm text-slate">
+              Vá até "Motoristas" para adicionar o primeiro motorista da frota.
+            </p>
+          </div>
+        )}
 
-      {!loading && sorted.length > 0 && viewMode === 'list' && (
-        <div className="bg-white rounded-xl shadow-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate border-b border-line whitespace-nowrap">
-                <th className="px-5 py-3 font-medium">Nome</th>
-                <th className="px-5 py-3 font-medium">Empresa</th>
-                <th className="px-5 py-3 font-medium font-mono">Total / 75% / 100%</th>
-                <th className="px-5 py-3 font-medium w-56">Progresso</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(({ driver, totalHoursStr, total75Str, total100Str, usage }) => {
-                const meta = STATUS_META[usage.status] || STATUS_META.ok
-                return (
-                  <tr
-                    key={driver.id}
-                    className="border-b border-line last:border-0 hover:bg-cloud/50"
-                  >
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <Link to={`/motoristas/${driver.id}`} className="font-medium hover:underline">
-                        {driver.name}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3">
-                      <EmpresaBadge empresa={driver.empresa} />
-                    </td>
-                    <td className="px-5 py-3 font-mono whitespace-nowrap">
-                      <div className="font-bold text-ink">{totalHoursStr}h</div>
-                      <div className="text-xs text-slate">
-                        75%: <span className="font-medium text-ink/80">{total75Str}h</span> | 
-                        100%: <span className="font-medium text-ink/80">{total100Str}h</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <RouteProgress percent={usage.percent} status={usage.status} compact />
-                    </td>
-                    <td className={`px-5 py-3 font-medium whitespace-nowrap ${meta.text}`}>
-                      {meta.label}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        {!loading && drivers.length > 0 && sorted.length === 0 && (
+          <div className="bg-white rounded-xl shadow-card p-10 text-center border border-line">
+            <p className="text-slate">Nenhum motorista correspondente aos filtros aplicados.</p>
+          </div>
+        )}
+
+        {!loading && top10Exibidos.length > 0 && viewMode === 'cards' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {top10Exibidos.map(({ driver, totalHours, totalHoursStr, total75Str, total100Str, usage }) => (
+              <DriverCard 
+                key={driver.id} 
+                driver={driver} 
+                totalHours={totalHours} 
+                totalHoursStr={totalHoursStr}
+                total75Str={total75Str}
+                total100Str={total100Str}
+                usage={usage} 
+              />
+            ))}
+          </div>
+        )}
+
+        {!loading && top10Exibidos.length > 0 && viewMode === 'list' && (
+          <div className="bg-white rounded-xl shadow-card overflow-x-auto border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate border-b border-line whitespace-nowrap bg-cloud/40">
+                  <th className="px-5 py-3 font-medium">Nome</th>
+                  <th className="px-5 py-3 font-medium">Empresa</th>
+                  <th className="px-5 py-3 font-medium font-mono">Total / 75% / 100%</th>
+                  <th className="px-5 py-3 font-medium w-56">Progresso</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top10Exibidos.map(({ driver, totalHoursStr, total75Str, total100Str, usage }) => {
+                  const meta = STATUS_META[usage.status] || STATUS_META.ok
+                  return (
+                    <tr
+                      key={driver.id}
+                      className="border-b border-line last:border-0 hover:bg-cloud/50"
+                    >
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <Link to={`/motoristas/${driver.id}`} className="font-medium hover:underline text-ink">
+                          {driver.name}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3">
+                        <EmpresaBadge empresa={driver.empresa} />
+                      </td>
+                      <td className="px-5 py-3 font-mono whitespace-nowrap">
+                        <div className="font-bold text-ink">{totalHoursStr}h</div>
+                        <div className="text-xs text-slate">
+                          75%: <span className="font-medium text-ink/80">{total75Str}h</span> | 
+                          100%: <span className="font-medium text-ink/80">{total100Str}h</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <RouteProgress percent={usage.percent} status={usage.status} compact />
+                      </td>
+                      <td className={`px-5 py-3 font-medium whitespace-nowrap ${meta.text}`}>
+                        {meta.label}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* LINHA DIVISORA DO GRAPHIC BI */}
+      <hr className="border-line" />
+
+      {/* SEÇÃO INFERIOR: GRÁFICOS E METRICAS */}
+      {!loading && computed.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xs font-bold text-slate uppercase tracking-wider px-1">
+            Métricas de Desempenho e Indicadores
+          </h2>
+
+          {/* KPIs Dinâmicos baseados no Escopo */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white border border-line p-4 rounded-xl shadow-sm flex flex-col justify-between">
+              <span className="text-xs font-semibold text-slate uppercase tracking-wider block">Total Frota</span>
+              <h2 className="text-2xl font-bold font-mono text-ink mt-1">{analytics.totalAcumuladoStr}h</h2>
+              <span className="text-[10px] text-slate block mt-0.5">Horas somadas no mês</span>
+            </div>
+            
+            <div className="bg-white border border-line p-4 rounded-xl shadow-sm flex flex-col justify-between">
+              <span className="text-xs font-semibold text-slate uppercase tracking-wider block">Média p/ Motorista</span>
+              <h2 className="text-2xl font-bold font-mono text-ink mt-1">{analytics.mediaPorCondutorStr}h</h2>
+              <span className="text-[10px] text-slate block mt-0.5">Média operacional ativa</span>
+            </div>
+
+            <div className="bg-white border border-line p-4 rounded-xl shadow-sm flex flex-col justify-between">
+              <span className="text-xs font-semibold text-slate uppercase tracking-wider block">Com Extras</span>
+              <h2 className="text-2xl font-bold font-mono text-slate-800 mt-1">{analytics.motoristasAtivosComHoras}</h2>
+              <span className="text-[10px] text-slate block mt-0.5">Condutores com horas extras</span>
+            </div>
+
+            <div className={`bg-white border p-4 rounded-xl shadow-sm flex flex-col justify-between border-l-4 ${
+              analytics.motoristasCriticos > 0 ? 'border-red-500 bg-red-50/10' : 'border-line'
+            }`}>
+              <span className={`text-xs font-bold uppercase tracking-wider block ${analytics.motoristasCriticos > 0 ? 'text-red-600' : 'text-slate'}`}>
+                Status Crítico
+              </span>
+              <h2 className={`text-2xl font-bold font-mono mt-1 ${analytics.motoristasCriticos > 0 ? 'text-red-600' : 'text-ink'}`}>
+                {analytics.motoristasCriticos}
+              </h2>
+              <span className="text-[10px] text-slate block mt-0.5">Excedidos ou em estado crítico</span>
+            </div>
+          </div>
+
+          {/* Renderização Integrada de Gráficos ApexCharts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            
+            {/* Gráfico de Rosca - Proporções de Risco */}
+            <div className="bg-white border border-line p-5 rounded-xl shadow-sm flex flex-col">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-ink uppercase tracking-wide">Visão Geral de Conformidade</h3>
+                <p className="text-xs text-slate">Distribuição proporcional das condições de horas extras da frota</p>
+              </div>
+              <div className="flex-1 flex items-center justify-center">
+                <Chart 
+                  options={analytics.donutConfig.options} 
+                  series={analytics.donutConfig.series} 
+                  type="donut" 
+                  width="100%" 
+                  height={280} 
+                />
+              </div>
+            </div>
+
+            {/* Gráfico de Barras - Top 5 Acúmulo */}
+            <div className="bg-white border border-line p-5 rounded-xl shadow-sm flex flex-col">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-ink uppercase tracking-wide">Top 5 Condutores — Maior Volume</h3>
+                <p className="text-xs text-slate">Ranking analítico baseado em lançamentos acumulados vigentes</p>
+              </div>
+              <div className="flex-1">
+                {!analytics.temDadosRanking ? (
+                  <div className="text-center py-14 text-xs text-slate">Nenhum dado computado para exibição do gráfico.</div>
+                ) : (
+                  <Chart 
+                    options={analytics.barConfig.options} 
+                    series={analytics.barConfig.series} 
+                    type="bar" 
+                    width="100%" 
+                    height={260} 
+                  />
+                )}
+              </div>
+            </div>
+
+          </div>
         </div>
       )}
 
