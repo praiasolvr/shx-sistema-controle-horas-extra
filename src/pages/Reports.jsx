@@ -17,7 +17,7 @@ export default function Reports() {
   const [selectedMonth, setSelectedMonth] = useState(`${currentYear}-${currentMonth}`);
   const [selectedDriverForModal, setSelectedDriverForModal] = useState(null);
 
-  // ================= SUAS FUNÇÕES PADRÕES DE CONVERSÃO E CÁLCULO =================
+  // ================= CONVERSÃO E CÁLCULO CORRIGIDO =================
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00';
     const h = Math.floor(decimal);
@@ -31,7 +31,7 @@ export default function Reports() {
 
     listaDeEntries.forEach((entry) => {
       const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60);
-      const limite2HorasEmMinutos = 2 * 60;
+      const limite2HorasEmMinutos = 120; // 2 horas em minutos
 
       if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
         minutos75 += brutoDiaEmMinutos;
@@ -117,7 +117,7 @@ export default function Reports() {
   // 3. Consome o seu hook useAllEntries
   const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers);
 
-  // 4. Une e filtra os lançamentos para a lista principal
+  // 4. Une, filtra e ordena os lançamentos para a lista principal
   const filteredEntries = useMemo(() => {
     if (!entriesByDriver) return [];
 
@@ -133,7 +133,7 @@ export default function Reports() {
       }));
     });
 
-    return allFlattenedEntries.filter(entry => {
+    const activeList = allFlattenedEntries.filter(entry => {
       const matchesMonth = entry.date && entry.date.startsWith(selectedMonth);
       const matchesSearch = 
         entry.driverName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -142,6 +142,13 @@ export default function Reports() {
 
       return matchesMonth && matchesSearch;
     });
+
+    // Ordem Alfabética (A-Z) + Data decrescente (Maior para menor) em caso de mesmo motorista
+    return activeList.sort((a, b) => {
+      const nameCompare = a.driverName.localeCompare(b.driverName);
+      if (nameCompare !== 0) return nameCompare;
+      return (b.date || '').localeCompare(a.date || '');
+    });
   }, [entriesByDriver, drivers, selectedMonth, searchTerm]);
 
   // 5. Cálculos dos Fechamentos usando a sua regra de Minutos
@@ -149,11 +156,14 @@ export default function Reports() {
     return calcularFechamento(filteredEntries);
   }, [filteredEntries]);
 
-  // 6. Filtra lançamentos específicos para o Modal de Detalhes
+  // 6. Filtra lançamentos específicos e ordena por Data Decrescente para o Modal
   const modalDriverEntries = useMemo(() => {
     if (!selectedDriverForModal || !entriesByDriver) return [];
     const entries = entriesByDriver[selectedDriverForModal.id] || [];
-    return entries.filter(entry => entry.date && entry.date.startsWith(selectedMonth));
+    
+    return entries
+      .filter(entry => entry.date && entry.date.startsWith(selectedMonth))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [selectedDriverForModal, entriesByDriver, selectedMonth]);
 
   // 7. Fechamento exclusivo do Motorista Selecionado para o Modal
@@ -372,15 +382,43 @@ export default function Reports() {
                       ? entry.date.split('-').reverse().join('/')
                       : entry.date;
 
+                    // Lógica correta de divisão diária por regime
+                    const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60);
+                    const limite2HorasEmMinutos = 120;
+
+                    let min75 = 0;
+                    let min100 = 0;
+
+                    if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
+                      min75 = brutoDiaEmMinutos;
+                    } else {
+                      min75 = limite2HorasEmMinutos;
+                      min100 = brutoDiaEmMinutos - limite2HorasEmMinutos;
+                    }
+
+                    const de75Str = formatarParaRelogio(min75 / 60);
+                    const de100Str = formatarParaRelogio(min100 / 60);
+
                     return (
                       <div key={entry.id} className="p-4 bg-white rounded-xl border border-slate-100 shadow-sm hover:border-slate-200 transition-all space-y-2.5">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
                           <span className="text-sm font-bold text-slate-800">
                             {formattedDate}
                           </span>
-                          <span className="px-2.5 py-1 rounded-lg font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
-                            {formatarParaRelogio(Number(entry.hours))} hrs
-                          </span>
+                          
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-600 border border-slate-200">
+                              75%: {de75Str}
+                            </span>
+                            {min100 > 0 && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                100%: {de100Str}
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-lg font-black text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
+                              {formatarParaRelogio(Number(entry.hours))} hrs
+                            </span>
+                          </div>
                         </div>
                         
                         {entry.note ? (
