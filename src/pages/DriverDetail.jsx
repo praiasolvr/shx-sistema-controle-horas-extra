@@ -249,7 +249,8 @@ export default function DriverDetail() {
               <thead>
                 <tr className="text-left text-slate border-b border-line bg-cloud/30">
                   <th className="px-5 py-3 font-medium">Data</th>
-                  <th className="px-5 py-3 font-medium font-mono">Horas</th>
+                  <th className="px-5 py-3 font-medium font-mono">Horas Totais</th>
+                  <th className="px-5 py-3 font-medium">Regimes (75% / 100%)</th>
                   <th className="px-5 py-3 font-medium">Observação</th>
                   <th className="px-5 py-3 font-medium">Lançado por</th>
                   <th className="px-5 py-3"></th>
@@ -268,17 +269,52 @@ export default function DriverDetail() {
 
                   const matriculaEncontrada = usuarioCorrespondente?.matricula;
 
+                  // ================= APLICAÇÃO DA SUA REGRA DE 75% E 100% POR LINHA =================
+                  const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60)
+                  const limite2HorasEmMinutos = 120
+
+                  let min75 = 0
+                  let min100 = 0
+
+                  if (brutoDiaEmMinutos <= limite2HorasEmMinutos) {
+                    min75 = brutoDiaEmMinutos
+                  } else {
+                    min75 = limite2HorasEmMinutos
+                    min100 = brutoDiaEmMinutos - limite2HorasEmMinutos
+                  }
+
+                  const de75Str = formatarParaRelogio(min75 / 60)
+                  const de100Str = formatarParaRelogio(min100 / 60)
+                  // =================================================================================
+
                   return (
                     <tr key={entry.id} className="border-b border-line last:border-0 hover:bg-cloud/20">
                       <td className="px-5 py-3.5 whitespace-nowrap">
                         {new Date(entry.date + 'T00:00:00').toLocaleDateString('pt-BR')}
                       </td>
-                      <td className="px-5 py-3.5 font-mono font-medium">{formatarParaRelogio(entry.hours)}h</td>
-                      <td className="px-5 py-3.5 text-slate max-w-[200px] truncate" title={entry.note}>
+                      <td className="px-5 py-3.5 font-mono font-bold text-ink">
+                        {formatarParaRelogio(entry.hours)}h
+                      </td>
+                      
+                      {/* NOVA COLUNA EXIBINDO A DIVISÃO INDIVIDUAL DE REGIME */}
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                            75%: {de75Str}
+                          </span>
+                          {min100 > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold animate-pulse-once">
+                              100%: {de100Str}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-3.5 text-slate max-w-[180px] truncate" title={entry.note}>
                         {entry.note || '—'}
                       </td>
                       
-                      {/* CRUZA O PROPRIETÁRIO DO LANÇAMENTO COM A MATRÍCULA DO CADASTRO EM TEMPO REAL */}
+                      {/* AUDITORIA DE MATRÍCULA */}
                       <td className="px-5 py-3.5 text-ink">
                         {lancadorNome ? (
                           <div className="flex flex-col gap-0.5">
