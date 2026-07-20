@@ -14,6 +14,10 @@ export default function DriverList() {
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
 
+  // Novas variáveis de estado para os filtros
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedEmpresa, setSelectedEmpresa] = useState('')
+
   async function handleSave(data) {
     if (editing) {
       await updateDriver(editing.id, data)
@@ -29,8 +33,25 @@ export default function DriverList() {
     setDeleting(null)
   }
 
+  // Lógica de filtragem reativa
+  const filteredDrivers = drivers.filter((driver) => {
+    const matchesSearch = 
+      driver.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      driver.matricula?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesEmpresa = selectedEmpresa === '' || driver.empresa === selectedEmpresa
+
+    return matchesSearch && matchesEmpresa
+  })
+
+  // Extrai as empresas cadastradas dinamicamente para alimentar o select do filtro
+  const uniqueEmpresas = Array.from(
+    new Set(drivers.map((d) => d.empresa).filter(Boolean))
+  )
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+      {/* Cabeçalho */}
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
           <p className="text-xs font-mono uppercase tracking-wide text-slate mb-1">Cadastro</p>
@@ -55,8 +76,25 @@ export default function DriverList() {
         </div>
       </div>
 
+      {/* Barra de Filtros (Aparece apenas se houver motoristas no sistema) */}
+      {!loading && drivers.length > 0 && (
+        <div className="bg-white rounded-xl shadow-card p-4 mb-6 flex flex-col sm:flex-row gap-4 items-center border border-line">
+          <div className="w-full sm:flex-1">
+            <label className="block text-xs font-medium text-slate mb-1">Buscar por nome ou matrícula</label>
+            <input
+              type="text"
+              placeholder="Digite o nome ou matrícula..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:outline-none focus:border-ink/50 transition"
+            />
+          </div>
+        </div>
+      )}
+
       {loading && <p className="text-slate">Carregando…</p>}
 
+      {/* Estado sem nenhum motorista real cadastrado no banco */}
       {!loading && drivers.length === 0 && (
         <div className="bg-white rounded-xl shadow-card p-10 text-center">
           <p className="font-display text-xl mb-1">Nenhum motorista cadastrado</p>
@@ -66,7 +104,18 @@ export default function DriverList() {
         </div>
       )}
 
-      {!loading && drivers.length > 0 && (
+      {/* Estado onde existem motoristas, mas o filtro atual limpou a tela */}
+      {!loading && drivers.length > 0 && filteredDrivers.length === 0 && (
+        <div className="bg-white rounded-xl shadow-card p-10 text-center border border-line">
+          <p className="font-display text-lg font-medium mb-1">Nenhum resultado encontrado</p>
+          <p className="text-sm text-slate">
+            Tente ajustar o termo de pesquisa ou trocar a empresa selecionada.
+          </p>
+        </div>
+      )}
+
+      {/* Renderização da Tabela Filtrada */}
+      {!loading && filteredDrivers.length > 0 && (
         <div className="bg-white rounded-xl shadow-card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -79,7 +128,7 @@ export default function DriverList() {
               </tr>
             </thead>
             <tbody>
-              {drivers.map((driver) => (
+              {filteredDrivers.map((driver) => (
                 <tr key={driver.id} className="border-b border-line last:border-0 hover:bg-cloud/50">
                   <td className="px-5 py-3 whitespace-nowrap">
                     <Link to={`/motoristas/${driver.id}`} className="font-medium hover:underline">
