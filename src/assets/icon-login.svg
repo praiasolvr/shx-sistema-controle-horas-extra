@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Fundo Arredondado com Gradiente Azul -->
+  <rect width="64" height="64" rx="16" fill="url(#shx-grad)" />
+  
+  <!-- Círculo Base do Relógio -->
+  <circle cx="32" cy="32" r="18" stroke="white" stroke-width="3.5" stroke-opacity="0.4" />
+  
+  <!-- Ponteiros do Relógio -->
+  <path d="M32 20V32L39 36" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Símbolo de Mais (+) referente a Horas Extras -->
+  <path d="M43 19H51M47 15V23" stroke="#38BDF8" stroke-width="3.5" stroke-linecap="round" />
+
+  <!-- Definição dos Gradientes -->
+  <defs>
+    <linearGradient id="shx-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E40AF" />
+      <stop offset="1" stop-color="#3B82F6" />
+    </linearGradient>
+  </defs>
+</svg>
