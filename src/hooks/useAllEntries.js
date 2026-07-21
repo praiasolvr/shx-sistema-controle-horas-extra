@@ -1,16 +1,14 @@
-import { useEffect, useState } from 'react'
-import { collection, query, onSnapshot } from 'firebase/firestore'
+import { useEffect, useState, useCallback } from 'react'
+import { collection, getDocs, query } from 'firebase/firestore'
 import { db } from '../firebase'
 
 export function useAllEntries(drivers) {
   const [entriesByDriver, setEntriesByDriver] = useState({})
   const [loading, setLoading] = useState(true)
 
-  // Criamos uma string estável com todos os IDs juntos (Ex: "id1,id2,id3")
   const driversIdsKey = (drivers || []).map(d => d.id).sort().join(',')
 
-  useEffect(() => {
-    // Se não há motoristas para buscar, limpa o estado e para o loading
+  const fetchEntries = useCallback(async () => {
     if (!drivers || drivers.length === 0) {
       setEntriesByDriver({})
       setLoading(false)
@@ -18,60 +16,39 @@ export function useAllEntries(drivers) {
     }
 
     setLoading(true)
-    const unsubscribes = []
-    
-    // Conjunto para rastrear quais motoristas já tiveram seu primeiro carregamento concluído
-    const loadedDriversSet = new Set()
-
-    drivers.forEach((driver) => {
-      const ref = collection(db, 'drivers', driver.id, 'entries')
-      const q = query(ref)
-
-      const unsub = onSnapshot(
-        q, 
-        (snapshot) => {
-          const driverEntries = snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
+    try {
+      const results = await Promise.all(
+        drivers.map(async (driver) => {
+          const ref = collection(db, 'drivers', driver.id, 'entries')
+          const snapshot = await getDocs(query(ref))
+          const entries = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
           }))
-
-          // Atualiza o estado de forma funcional e segura (preservando os dados antigos)
-          setEntriesByDriver((prev) => ({
-            ...prev,
-            [driver.id]: driverEntries
-          }))
-
-          // Registra que este motorista carregou seus dados pela primeira vez
-          loadedDriversSet.add(driver.id)
-
-          // Só removemos o loading geral se TODOS os motoristas da lista atual carregaram
-          if (loadedDriversSet.size >= drivers.length) {
-            setLoading(false)
-          }
-        }, 
-        (error) => {
-          console.error(`Erro ao escutar lançamentos do motorista ${driver.id}:`, error)
-          
-          // Mesmo se der erro em um motorista específico, computa para não travar o loading geral
-          loadedDriversSet.add(driver.id)
-          if (loadedDriversSet.size >= drivers.length) {
-            setLoading(false)
-          }
-        }
+          return { driverId: driver.id, entries }
+        })
       )
 
-      unsubscribes.push(unsub)
-    })
+      const newEntriesMap = {}
+      results.forEach(({ driverId, entries }) => {
+        newEntriesMap[driverId] = entries
+      })
 
-    // Limpeza crucial ao desmontar ou quando a lista de motoristas mudar
-    return () => {
-      unsubscribes.forEach((unsub) => unsub())
+      setEntriesByDriver(newEntriesMap)
+    } catch (error) {
+      console.error("Erro ao buscar lançamentos via getDocs:", error)
+    } finally {
+      setLoading(false)
     }
-    
-  }, [driversIdsKey]) // Roda apenas quando a lista real de IDs mudar
+  }, [driversIdsKey])
+
+  useEffect(() => {
+    fetchEntries()
+  }, [fetchEntries])
 
   return {
     entriesByDriver,
-    loading
+    loading,
+    refetch: fetchEntries // Permite recarregar manualmente via botão se necessário
   }
 }

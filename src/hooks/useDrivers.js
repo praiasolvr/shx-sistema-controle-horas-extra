@@ -8,36 +8,49 @@ import {
   doc,
   serverTimestamp,
   query,
-  orderBy,
   where,
   getDocs,
   getDoc,
+  getDocFromCache,
   writeBatch
 } from 'firebase/firestore'
 import { db, auth } from '../firebase'
+import { useVisibilityListener } from './useVisibilityListener' // 1. Importa o detector de aba ativa
 
 const driversRef = collection(db, 'drivers')
-const IMPORT_CHUNK_SIZE = 400 // limite seguro abaixo do máximo de 500 operações por batch
+const IMPORT_CHUNK_SIZE = 400
 
 export function useDrivers() {
   const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Estados locais para controlar permissões do usuário logado no hook
   const [userRole, setUserRole] = useState(null)
   const [userEmpresa, setUserEmpresa] = useState('')
   const [loadingUser, setLoadingUser] = useState(true)
 
-  // 1. Busca perfil do usuário logado para saber as permissões
+  // 2. Monitora se a aba do navegador está visível ou em segundo plano
+  const isVisible = useVisibilityListener()
+
+  // 1. Busca perfil do usuário (Tenta no Cache primeiro para Economizar 1 Leitura)
   useEffect(() => {
     let active = true
+
     async function fetchUserRole() {
       const currentUser = auth.currentUser
       if (currentUser) {
         try {
           const docRef = doc(db, 'users', currentUser.uid)
-          const docSnap = await getDoc(docRef)
+          let docSnap
+
+          // Tenta ler primeiro do cache offline (custo zero no servidor)
+          try {
+            docSnap = await getDocFromCache(docRef)
+          } catch (e) {
+            // Se não estiver em cache, faz o fetch normal no servidor
+            docSnap = await getDoc(docRef)
+          }
+
           if (docSnap.exists() && active) {
             const userData = docSnap.data()
             setUserRole(userData.role || 'colaborador')
@@ -53,6 +66,7 @@ export function useDrivers() {
         if (active) setLoadingUser(false)
       }
     }
+
     fetchUserRole()
 
     return () => {
@@ -60,21 +74,19 @@ export function useDrivers() {
     }
   }, [])
 
-  // 2. Escuta os motoristas com base no papel e empresa do usuário logado
-  // 2. Escuta os motoristas com base no papel e empresa do usuário logado
+  // 2. Escuta os motoristas (Cancelado automaticamente se a aba ficar oculta)
   useEffect(() => {
-    if (loadingUser) return
+    // Se estiver carregando o usuário ou a aba estiver em segundo plano, para o listener
+    if (loadingUser || !isVisible) return
 
     let q
 
-    // Se NÃO for supervisor e pertencer a uma empresa específica, aplica APENAS o filtro no Firestore (sem orderBy)
     if (userRole !== 'supervisor' && userEmpresa) {
       q = query(
         driversRef, 
         where('empresa', '==', userEmpresa)
       )
     } else {
-      // Supervisores visualizam todos os motoristas
       q = query(driversRef)
     }
 
@@ -83,8 +95,7 @@ export function useDrivers() {
       (snapshot) => {
         const loadedDrivers = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
         
-        // Ordena por nome diretamente no JavaScript (evita necessidade de índices compostos no Firebase)
-        loadedDrivers.sort((a, b) => a.name.localeCompare(b.name))
+        loadedDrivers.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
         setDrivers(loadedDrivers)
         setLoading(false)
@@ -97,10 +108,9 @@ export function useDrivers() {
     )
 
     return () => unsubscribe()
-  }, [userRole, userEmpresa, loadingUser])
+  }, [userRole, userEmpresa, loadingUser, isVisible])
 
   async function addDriver({ name, matricula, empresa, role, phone, maxHours }) {
-    // Se o usuário não for supervisor, força o cadastro do motorista sob a mesma empresa do usuário logado
     const empresaFinal = userRole !== 'supervisor' && userEmpresa ? userEmpresa : empresa
 
     return addDoc(driversRef, {
@@ -121,7 +131,6 @@ export function useDrivers() {
       payload.maxHours = Number(payload.maxHours) || 0
     }
     
-    // Proteção adicional: colaboradores comuns não podem alterar a empresa de um motorista
     if (userRole !== 'supervisor') {
       delete payload.empresa
     }
@@ -130,8 +139,6 @@ export function useDrivers() {
   }
 
   async function deleteDriver(id) {
-    // Remove primeiro os lançamentos de horas (subcoleção) e depois o motorista,
-    // já que o Firestore não faz exclusão em cascata automaticamente.
     const entriesRef = collection(db, 'drivers', id, 'entries')
     const entriesSnap = await getDocs(entriesRef)
     if (!entriesSnap.empty) {
@@ -143,8 +150,6 @@ export function useDrivers() {
     return deleteDoc(ref)
   }
 
-  // Importação em massa a partir de uma lista já normalizada (vinda do CSV/Excel).
-  // Cada item: { name, matricula, empresa, role, phone, maxHours }
   async function bulkImportDrivers(rows) {
     const validRows = rows.filter((r) => r.name && r.name.trim())
     for (let i = 0; i < validRows.length; i += IMPORT_CHUNK_SIZE) {
@@ -153,7 +158,6 @@ export function useDrivers() {
       chunk.forEach((row) => {
         const ref = doc(driversRef)
         
-        // Se não for supervisor, força o cadastro do lote inteiro na sua empresa
         const empresaFinal = userRole !== 'supervisor' && userEmpresa ? userEmpresa : row.empresa
 
         batch.set(ref, {

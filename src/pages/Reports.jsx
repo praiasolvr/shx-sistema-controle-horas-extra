@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, getDocFromCache } from 'firebase/firestore';
 import { db, auth } from '../firebase'; 
 import { useAllEntries } from '../hooks/useAllEntries';
+import { useVisibilityListener } from '../hooks/useVisibilityListener'; // 1. Importa o listener de visibilidade
 import { Calendar, Clock, FileText, User, Search, MapPin, X, Hash, Download, Printer } from 'lucide-react';
 
 export default function Reports() {
@@ -11,6 +12,9 @@ export default function Reports() {
   
   const [userEmpresa, setUserEmpresa] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+
+  // 2. Escuta se a aba atual está ativa ou em segundo plano
+  const isVisible = useVisibilityListener();
 
   const currentYear = new Date().getFullYear();
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
@@ -53,13 +57,20 @@ export default function Reports() {
     };
   };
 
-  // 1. Identifica o usuário e a empresa
+  // 1. Identifica o usuário e a empresa (Lê do Cache Local Primeiro)
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
           const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
+          let userDocSnap;
+
+          // Tenta ler do cache do navegador antes de fazer request no servidor
+          try {
+            userDocSnap = await getDocFromCache(userDocRef);
+          } catch (cacheErr) {
+            userDocSnap = await getDoc(userDocRef);
+          }
           
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
@@ -81,9 +92,9 @@ export default function Reports() {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. Carrega os motoristas filtrados pela empresa
+  // 2. Carrega os motoristas filtrados pela empresa (Pausa ao mudar de aba)
   useEffect(() => {
-    if (loadingUser || !userEmpresa) return;
+    if (loadingUser || !userEmpresa || !isVisible) return;
 
     const ref = collection(db, 'drivers');
     const unsubscribeDrivers = onSnapshot(ref, 
@@ -111,9 +122,9 @@ export default function Reports() {
     );
 
     return () => unsubscribeDrivers();
-  }, [userEmpresa, loadingUser]);
+  }, [userEmpresa, loadingUser, isVisible]);
 
-  // 3. Consome o hook useAllEntries
+  // 3. Consome o hook useAllEntries (Já otimizado com useVisibilityListener)
   const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers);
 
   // 4. Une, filtra e ordena os lançamentos para a lista principal
