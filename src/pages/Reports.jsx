@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase'; 
 import { useAllEntries } from '../hooks/useAllEntries';
-import { Calendar, Clock, FileText, User, Search, MapPin, X, Hash } from 'lucide-react';
+import { Calendar, Clock, FileText, User, Search, MapPin, X, Hash, Download, Printer } from 'lucide-react';
 
 export default function Reports() {
   const [drivers, setDrivers] = useState([]);
@@ -52,7 +52,6 @@ export default function Reports() {
       totalGeralDecimal: totalGeralDecimal
     };
   };
-  // ==============================================================================
 
   // 1. Identifica o usuário e a empresa
   useEffect(() => {
@@ -114,7 +113,7 @@ export default function Reports() {
     return () => unsubscribeDrivers();
   }, [userEmpresa, loadingUser]);
 
-  // 3. Consome o seu hook useAllEntries
+  // 3. Consome o hook useAllEntries
   const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers);
 
   // 4. Une, filtra e ordena os lançamentos para a lista principal
@@ -143,7 +142,6 @@ export default function Reports() {
       return matchesMonth && matchesSearch;
     });
 
-    // Ordem Alfabética (A-Z) + Data decrescente (Maior para menor) em caso de mesmo motorista
     return activeList.sort((a, b) => {
       const nameCompare = a.driverName.localeCompare(b.driverName);
       if (nameCompare !== 0) return nameCompare;
@@ -151,7 +149,7 @@ export default function Reports() {
     });
   }, [entriesByDriver, drivers, selectedMonth, searchTerm]);
 
-  // 5. Cálculos dos Fechamentos usando a sua regra de Minutos
+  // 5. Cálculos dos Fechamentos usando a regra de Minutos
   const fechamentoGeralEmpresa = useMemo(() => {
     return calcularFechamento(filteredEntries);
   }, [filteredEntries]);
@@ -171,6 +169,52 @@ export default function Reports() {
     return calcularFechamento(modalDriverEntries);
   }, [modalDriverEntries]);
 
+  // ================= EXPORTAÇÃO DE DADOS (CSV & IMPRESSÃO) =================
+  const handleExportCSV = () => {
+    if (filteredEntries.length === 0) return;
+
+    const headers = ["Motorista", "Matrícula", "Empresa", "Data", "Horas Totais", "Horas 75%", "Horas 100%", "Observação", "Lançado Por"];
+    
+    const rows = filteredEntries.map(entry => {
+      const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60);
+      const limite2Horas = 120;
+      let min75 = brutoDiaEmMinutos <= limite2Horas ? brutoDiaEmMinutos : limite2Horas;
+      let min100 = brutoDiaEmMinutos > limite2Horas ? brutoDiaEmMinutos - limite2Horas : 0;
+
+      const formattedDate = entry.date && entry.date.includes('-')
+        ? entry.date.split('-').reverse().join('/')
+        : entry.date;
+
+      return [
+        `"${entry.driverName.replace(/"/g, '""')}"`,
+        `"${entry.driverMatricula}"`,
+        `"${entry.empresa}"`,
+        `"${formattedDate}"`,
+        `"${formatarParaRelogio(Number(entry.hours))}"`,
+        `"${formatarParaRelogio(min75 / 60)}"`,
+        `"${formatarParaRelogio(min100 / 60)}"`,
+        `"${(entry.note || '').replace(/"/g, '""')}"`,
+        `"${entry.createdByName || 'Sistema'}"`
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `relatorio_horas_extras_${userEmpresa}_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+  // =========================================================================
+
   if (loadingUser || loadingDrivers || loadingEntries) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -180,18 +224,18 @@ export default function Reports() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6 space-y-6 bg-slate-50 min-h-screen relative">
+    <div className="mx-auto max-w-7xl p-6 space-y-6 bg-slate-50 min-h-screen relative print:bg-white print:p-0">
       
       {/* CABEÇALHO */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5 print:border-b-2 print:border-black">
         <div>
-          <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">
+          <span className="text-sm font-medium text-slate-500 uppercase tracking-wider print:text-black">
             Painel de Auditoria - {userEmpresa?.toUpperCase()}
           </span>
-          <h1 className="text-2xl font-bold text-slate-800 mt-1">Lançamentos de Horas Extras</h1>
+          <h1 className="text-2xl font-bold text-slate-800 mt-1 print:text-black">Relatório de Horas Extras</h1>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-3 print:hidden">
           <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm w-full sm:w-64">
             <Search className="h-4 w-4 text-slate-400" />
             <input
@@ -212,48 +256,71 @@ export default function Reports() {
               className="border-none text-slate-700 font-medium cursor-pointer outline-none text-sm"
             />
           </div>
+
+          {/* BOTÕES DE EXPORTAÇÃO */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleExportCSV}
+              disabled={filteredEntries.length === 0}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors shadow-sm"
+              title="Exportar para Excel / CSV"
+            >
+              <Download className="h-4 w-4" />
+              <span>CSV</span>
+            </button>
+
+            <button
+              onClick={handlePrint}
+              disabled={filteredEntries.length === 0}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors shadow-sm"
+              title="Imprimir ou Salvar como PDF"
+            >
+              <Printer className="h-4 w-4" />
+              <span>Imprimir/PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* CARDS INDICADORES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 print:grid-cols-3">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between print:border-black">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-slate-500">Total Geral da Empresa</p>
-            <p className="text-3xl font-extrabold text-blue-600">{fechamentoGeralEmpresa.totalGeralStr} hrs</p>
-            <div className="text-[11px] text-slate-400 flex gap-2 mt-1">
+            <p className="text-sm font-medium text-slate-500 print:text-black">Total Geral da Empresa</p>
+            <p className="text-3xl font-extrabold text-blue-600 print:text-black">{fechamentoGeralEmpresa.totalGeralStr} hrs</p>
+            <div className="text-[11px] text-slate-400 flex gap-2 mt-1 print:text-black">
               <span>75%: <strong>{fechamentoGeralEmpresa.total75Str}</strong></span>
               <span>100%: <strong>{fechamentoGeralEmpresa.total100Str}</strong></span>
             </div>
           </div>
-          <div className="p-3 bg-blue-50 rounded-xl">
+          <div className="p-3 bg-blue-50 rounded-xl print:hidden">
             <Clock className="h-6 w-6 text-blue-600" />
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between print:border-black">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-slate-500">Total de Registros</p>
-            <p className="text-3xl font-extrabold text-slate-800">{filteredEntries.length}</p>
+            <p className="text-sm font-medium text-slate-500 print:text-black">Total de Registros</p>
+            <p className="text-3xl font-extrabold text-slate-800 print:text-black">{filteredEntries.length}</p>
           </div>
-          <div className="p-3 bg-slate-50 rounded-xl">
+          <div className="p-3 bg-slate-50 rounded-xl print:hidden">
             <FileText className="h-6 w-6 text-slate-600" />
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between print:border-black">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-slate-500">Motoristas Visíveis</p>
-            <p className="text-3xl font-extrabold text-slate-800">{drivers.length}</p>
+            <p className="text-sm font-medium text-slate-500 print:text-black">Motoristas Visíveis</p>
+            <p className="text-3xl font-extrabold text-slate-800 print:text-black">{drivers.length}</p>
           </div>
-          <div className="p-3 bg-slate-50 rounded-xl">
+          <div className="p-3 bg-slate-50 rounded-xl print:hidden">
             <User className="h-6 w-6 text-slate-600" />
           </div>
         </div>
       </div>
 
       {/* LISTAGEM EM TABELA */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:border-black print:shadow-none">
         {filteredEntries.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <Calendar className="h-12 w-12 mx-auto text-slate-300 mb-3" />
@@ -263,7 +330,7 @@ export default function Reports() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider print:bg-slate-200 print:text-black">
                   <th className="p-4">Motorista</th>
                   <th className="p-4">Data</th>
                   <th className="p-4">Horas Extras</th>
@@ -271,7 +338,7 @@ export default function Reports() {
                   <th className="p-4">Lançado por</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
+              <tbody className="divide-y divide-slate-100 text-sm text-slate-700 print:divide-slate-300">
                 {filteredEntries.map((entry) => {
                   const formattedDate = entry.date && entry.date.includes('-')
                     ? entry.date.split('-').reverse().join('/')
@@ -286,42 +353,42 @@ export default function Reports() {
                         matricula: entry.driverMatricula, 
                         empresa: entry.empresa 
                       })}
-                      className="hover:bg-blue-50/40 transition-colors cursor-pointer"
+                      className="hover:bg-blue-50/40 transition-colors cursor-pointer print:hover:bg-transparent"
                     >
                       <td className="p-4">
-                        <div className="font-semibold text-slate-900 text-blue-600 hover:underline">
+                        <div className="font-semibold text-slate-900 text-blue-600 hover:underline print:text-black print:no-underline">
                           {entry.driverName}
                         </div>
-                        <div className="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                        <div className="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 print:text-slate-600">
                           {entry.driverMatricula && (
-                            <span className="flex items-center gap-0.5 font-medium text-slate-500">
-                              <Hash className="h-3 w-3" /> Matrícula: {entry.driverMatricula}
+                            <span className="flex items-center gap-0.5 font-medium text-slate-500 print:text-black">
+                              <Hash className="h-3 w-3 print:hidden" /> Matrícula: {entry.driverMatricula}
                             </span>
                           )}
                           <span className="flex items-center gap-0.5">
-                            <MapPin className="h-3 w-3" /> {entry.empresa}
+                            <MapPin className="h-3 w-3 print:hidden" /> {entry.empresa}
                           </span>
                         </div>
                       </td>
-                      <td className="p-4 text-slate-600 font-medium">{formattedDate}</td>
+                      <td className="p-4 text-slate-600 font-medium print:text-black">{formattedDate}</td>
                       <td className="p-4">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 print:border-black print:text-black print:bg-transparent">
                           {formatarParaRelogio(Number(entry.hours))} hrs
                         </span>
                       </td>
                       <td className="p-4">
                         {entry.note ? (
-                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium border border-slate-200">
+                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium border border-slate-200 print:bg-transparent print:border-none print:p-0 print:text-black">
                             {entry.note}
                           </span>
                         ) : (
-                          <span className="text-slate-300 italic text-xs">Sem observações</span>
+                          <span className="text-slate-300 italic text-xs print:text-slate-500">Sem observações</span>
                         )}
                       </td>
                       <td className="p-4">
                         <div className="text-xs">
-                          <p className="font-medium text-slate-700">{entry.createdByName || "Sistema"}</p>
-                          <p className="text-slate-400 text-[10px]">{entry.createdByEmail}</p>
+                          <p className="font-medium text-slate-700 print:text-black">{entry.createdByName || "Sistema"}</p>
+                          <p className="text-slate-400 text-[10px] print:text-slate-600">{entry.createdByEmail}</p>
                         </div>
                       </td>
                     </tr>
@@ -333,9 +400,9 @@ export default function Reports() {
         )}
       </div>
 
-      {/* MODAL CENTRALIZADO */}
+      {/* MODAL CENTRALIZADO (Oculto na Impressão) */}
       {selectedDriverForModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200 print:hidden">
           <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-h-[85vh] animate-in zoom-in-95 duration-200">
             
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
@@ -382,7 +449,6 @@ export default function Reports() {
                       ? entry.date.split('-').reverse().join('/')
                       : entry.date;
 
-                    // Lógica correta de divisão diária por regime
                     const brutoDiaEmMinutos = Math.round((Number(entry.hours) || 0) * 60);
                     const limite2HorasEmMinutos = 120;
 
