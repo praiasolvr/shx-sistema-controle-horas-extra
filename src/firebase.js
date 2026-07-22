@@ -4,6 +4,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -17,9 +18,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+// Inicialização do Firestore com Cache Persistente Multi-Abas + Limite Ilimitado de Cache
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED, // Previne erros de cota do IndexedDB estourada no navegador
   }),
 });
 

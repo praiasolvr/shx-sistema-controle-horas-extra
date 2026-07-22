@@ -1,54 +1,76 @@
-import { useEffect, useState, useCallback } from 'react'
-import { collection, getDocs, query } from 'firebase/firestore'
-import { db } from '../firebase'
+import { useEffect, useState, useCallback } from "react";
+import { collectionGroup, getDocs, query, where, orderBy } from "firebase/firestore";
+import { db } from "../firebase";
 
-export function useAllEntries(drivers) {
-  const [entriesByDriver, setEntriesByDriver] = useState({})
-  const [loading, setLoading] = useState(true)
+export function useAllEntries(drivers, selectedMonth) {
+  const [entriesByDriver, setEntriesByDriver] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  const driversIdsKey = (drivers || []).map(d => d.id).sort().join(',')
+  // Mapeia os IDs válidos dos motoristas visíveis para filtrar o resultado em memória
+  const driverIdsSet = new Set((drivers || []).map((d) => d.id));
 
   const fetchEntries = useCallback(async () => {
     if (!drivers || drivers.length === 0) {
-      setEntriesByDriver({})
-      setLoading(false)
-      return
+      setEntriesByDriver({});
+      setLoading(false);
+      return;
     }
 
-    setLoading(true)
+    if (!selectedMonth) return;
+
+    setLoading(true);
+
     try {
-      const results = await Promise.all(
-        drivers.map(async (driver) => {
-          const ref = collection(db, 'drivers', driver.id, 'entries')
-          const snapshot = await getDocs(query(ref))
-          const entries = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
-          return { driverId: driver.id, entries }
-        })
-      )
+      // 1 ÚNICA REQUISIÇÃO para buscar todos os lançamentos do mês em todas as subcoleções "entries"
+      const entriesQuery = query(
+        collectionGroup(db, "entries"),
+        where("date", ">=", `${selectedMonth}-01`),
+        where("date", "<=", `${selectedMonth}-31`),
+        orderBy("date", "desc")
+      );
 
-      const newEntriesMap = {}
-      results.forEach(({ driverId, entries }) => {
-        newEntriesMap[driverId] = entries
-      })
+      const snapshot = await getDocs(entriesQuery);
 
-      setEntriesByDriver(newEntriesMap)
+      const result = {};
+
+      // Inicializa o objeto para todos os motoristas
+      drivers.forEach((driver) => {
+        result[driver.id] = [];
+      });
+
+      // Agrupa os resultados pelo ID do motorista (extraído do caminho do documento)
+      snapshot.docs.forEach((docSnap) => {
+        // Exemplo do path do documento: "drivers/ID_DO_MOTORISTA/entries/ID_DO_LANCAMENTO"
+        const pathSegments = docSnap.ref.path.split("/");
+        const driverId = pathSegments[1]; // Pega o ID do motorista pai
+
+        // Apenas inclui se o motorista pertencer à lista ativa da empresa
+        if (driverIdsSet.has(driverId)) {
+          if (!result[driverId]) {
+            result[driverId] = [];
+          }
+          result[driverId].push({
+            id: docSnap.id,
+            ...docSnap.data(),
+          });
+        }
+      });
+
+      setEntriesByDriver(result);
     } catch (error) {
-      console.error("Erro ao buscar lançamentos via getDocs:", error)
+      console.error("Erro ao buscar entries com collectionGroup:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [driversIdsKey])
+  }, [drivers, selectedMonth]);
 
   useEffect(() => {
-    fetchEntries()
-  }, [fetchEntries])
+    fetchEntries();
+  }, [fetchEntries]);
 
   return {
     entriesByDriver,
     loading,
-    refetch: fetchEntries // Permite recarregar manualmente via botão se necessário
-  }
+    refetch: fetchEntries,
+  };
 }

@@ -1,33 +1,36 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext'; // Ajuste o caminho se necessário
 
 /**
  * Hook para monitorar inatividade e disparar warning/logout
- * @param {number} idleTimeMs - Tempo em ms até exibir o alerta (ex: 1 min = 60000)
- * @param {number} warningTimeMs - Tempo em ms de tolerância no alerta antes do logout (ex: 15 seg = 15000)
+ * @param {number} idleTimeMs - Tempo em ms até exibir o alerta (ex: 15 min = 900000)
+ * @param {number} warningTimeMs - Tempo em ms de tolerância no alerta antes do logout (ex: 1 min = 60000)
  */
 export function useIdleTimer(idleTimeMs = 15 * 60 * 1000, warningTimeMs = 60 * 1000) {
-  const { logout, user } = useAuth(); // Usando 'user' conforme o AuthContext
+  const { logout, currentUser } = useAuth();
   const [isWarningOpen, setIsWarningOpen] = useState(false);
   const [countdown, setCountdown] = useState(Math.ceil(warningTimeMs / 1000));
 
   const idleTimerRef = useRef(null);
   const countdownIntervalRef = useRef(null);
 
-  // Força o logout e limpa os timers
-  const handleForceLogout = useCallback(() => {
+  // Reseta os cronômetros e oculta o aviso
+  const resetTimer = () => {
     setIsWarningOpen(false);
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    if (logout) logout();
-  }, [logout]);
-
-  // Inicia a contagem regressiva visual no modal
-  const startWarningCountdown = useCallback(() => {
-    setIsWarningOpen(true);
     setCountdown(Math.ceil(warningTimeMs / 1000));
 
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+
+    if (currentUser) {
+      idleTimerRef.current = setTimeout(startWarningCountdown, idleTimeMs);
+    }
+  };
+
+  // Inicia a contagem regressiva visual no modal
+  const startWarningCountdown = () => {
+    setIsWarningOpen(true);
+    setCountdown(Math.ceil(warningTimeMs / 1000));
 
     countdownIntervalRef.current = setInterval(() => {
       setCountdown((prev) => {
@@ -39,48 +42,33 @@ export function useIdleTimer(idleTimeMs = 15 * 60 * 1000, warningTimeMs = 60 * 1
         return prev - 1;
       });
     }, 1000);
-  }, [warningTimeMs, handleForceLogout]);
+  };
 
-  // Reseta os cronômetros e oculta o aviso
-  const resetTimer = useCallback(() => {
+  const handleForceLogout = () => {
     setIsWarningOpen(false);
-    setCountdown(Math.ceil(warningTimeMs / 1000));
-
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-
-    if (user) {
-      idleTimerRef.current = setTimeout(startWarningCountdown, idleTimeMs);
-    }
-  }, [user, idleTimeMs, warningTimeMs, startWarningCountdown]);
+    if (logout) logout();
+  };
 
   useEffect(() => {
-    // Se não houver usuário logado, não ativa o monitoramento
-    if (!user) return;
+    if (!currentUser) return;
 
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-
     const handleUserActivity = () => {
-      // Só reseta a contagem se o modal de aviso NÃO estiver visível na tela
-      setIsWarningOpen((currentlyOpen) => {
-        if (!currentlyOpen) {
-          resetTimer();
-        }
-        return currentlyOpen;
-      });
+      // Só reseta se o modal de aviso NÃO estiver aberto
+      if (!isWarningOpen) {
+        resetTimer();
+      }
     };
 
     events.forEach((event) => window.addEventListener(event, handleUserActivity));
-    
-    // Inicia o temporizador inicial
-    resetTimer();
+    resetTimer(); // Inicia no mount
 
     return () => {
       events.forEach((event) => window.removeEventListener(event, handleUserActivity));
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     };
-  }, [user, resetTimer]);
+  }, [currentUser, isWarningOpen]);
 
   return { isWarningOpen, countdown, resetTimer, handleForceLogout };
 }

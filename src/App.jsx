@@ -14,9 +14,17 @@ import Reports from './pages/Reports'
 
 // Componente de proteção para rotas restritas apenas para Admins
 function AdminRoute({ children }) {
-  const { user } = useAuth()
+  const { profile, loading } = useAuth()
 
-  if (user?.role !== 'admin') {
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-slate font-medium">
+        Verificando permissões...
+      </div>
+    )
+  }
+
+  if (profile?.role !== 'supervisor') {
     return <Navigate to="/" replace />
   }
 
@@ -33,7 +41,7 @@ function AppShell() {
 
   // CONFIGURAÇÃO PARA PRODUÇÃO:
   // 15 * 60 * 1000 = 15 minutos em ms até disparar o alerta
-  // 60 * 1000      = 60 segundos (1 minuto) de contagem no modal
+  // 60 * 1000 = 60 segundos (1 minuto) de contagem no modal
 
   const { isWarningOpen, countdown, resetTimer, handleForceLogout } = useIdleTimer(
     15 * 60 * 1000, 
