@@ -1,74 +1,81 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext'; // Ajuste o caminho se necessário
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
 
-/**
- * Hook para monitorar inatividade e disparar warning/logout
- * @param {number} idleTimeMs - Tempo em ms até exibir o alerta (ex: 15 min = 900000)
- * @param {number} warningTimeMs - Tempo em ms de tolerância no alerta antes do logout (ex: 1 min = 60000)
- */
+
+// 15 * 60 * 1000 = 900.000 ms (15 minutos)
+// 60 * 1000 = 60.000 ms (60 segundos / 1 minuto)
 export function useIdleTimer(idleTimeMs = 15 * 60 * 1000, warningTimeMs = 60 * 1000) {
-  const { logout, currentUser } = useAuth();
-  const [isWarningOpen, setIsWarningOpen] = useState(false);
-  const [countdown, setCountdown] = useState(Math.ceil(warningTimeMs / 1000));
+  const { logout } = useAuth()
+  
+  const [isWarningOpen, setIsWarningOpen] = useState(false)
+  const [countdown, setCountdown] = useState(Math.ceil(warningTimeMs / 1000))
 
-  const idleTimerRef = useRef(null);
-  const countdownIntervalRef = useRef(null);
+  const idleTimerRef = useRef(null)
+  const countdownIntervalRef = useRef(null)
+  const isWarningOpenRef = useRef(false)
 
-  // Reseta os cronômetros e oculta o aviso
-  const resetTimer = () => {
-    setIsWarningOpen(false);
-    setCountdown(Math.ceil(warningTimeMs / 1000));
+  useEffect(() => {
+    isWarningOpenRef.current = isWarningOpen
+  }, [isWarningOpen])
 
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-
-    if (currentUser) {
-      idleTimerRef.current = setTimeout(startWarningCountdown, idleTimeMs);
+  const handleForceLogout = useCallback(async () => {
+    clearInterval(countdownIntervalRef.current)
+    clearTimeout(idleTimerRef.current)
+    setIsWarningOpen(false)
+    if (logout) {
+      await logout()
     }
-  };
+  }, [logout])
 
-  // Inicia a contagem regressiva visual no modal
-  const startWarningCountdown = () => {
-    setIsWarningOpen(true);
-    setCountdown(Math.ceil(warningTimeMs / 1000));
-
+  const startCountdown = useCallback(() => {
+    setCountdown(Math.ceil(warningTimeMs / 1000))
+    
+    clearInterval(countdownIntervalRef.current)
     countdownIntervalRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          clearInterval(countdownIntervalRef.current);
-          handleForceLogout();
-          return 0;
+          clearInterval(countdownIntervalRef.current)
+          handleForceLogout()
+          return 0
         }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+        return prev - 1
+      })
+    }, 1000)
+  }, [warningTimeMs, handleForceLogout])
 
-  const handleForceLogout = () => {
-    setIsWarningOpen(false);
-    if (logout) logout();
-  };
+  const resetTimer = useCallback(() => {
+    setIsWarningOpen(false)
+    clearInterval(countdownIntervalRef.current)
+    clearTimeout(idleTimerRef.current)
+
+    idleTimerRef.current = setTimeout(() => {
+      setIsWarningOpen(true)
+      startCountdown()
+    }, idleTimeMs)
+  }, [idleTimeMs, startCountdown])
 
   useEffect(() => {
-    if (!currentUser) return;
-
-    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
     const handleUserActivity = () => {
-      // Só reseta se o modal de aviso NÃO estiver aberto
-      if (!isWarningOpen) {
-        resetTimer();
-      }
-    };
+      if (isWarningOpenRef.current) return
+      resetTimer()
+    }
 
-    events.forEach((event) => window.addEventListener(event, handleUserActivity));
-    resetTimer(); // Inicia no mount
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart']
+    events.forEach((event) => window.addEventListener(event, handleUserActivity))
+
+    resetTimer()
 
     return () => {
-      events.forEach((event) => window.removeEventListener(event, handleUserActivity));
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-    };
-  }, [currentUser, isWarningOpen]);
+      events.forEach((event) => window.removeEventListener(event, handleUserActivity))
+      clearTimeout(idleTimerRef.current)
+      clearInterval(countdownIntervalRef.current)
+    }
+  }, [idleTimeMs])
 
-  return { isWarningOpen, countdown, resetTimer, handleForceLogout };
+  return {
+    isWarningOpen,
+    countdown,
+    resetTimer,
+    handleForceLogout
+  }
 }
