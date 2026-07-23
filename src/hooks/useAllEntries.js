@@ -6,8 +6,8 @@ export function useAllEntries(drivers, selectedMonth) {
   const [entriesByDriver, setEntriesByDriver] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Mapeia os IDs válidos dos motoristas visíveis para filtrar o resultado em memória
-  const driverIdsSet = new Set((drivers || []).map((d) => d.id));
+  // Se nenhum mês for informado, assume o mês atual no formato "YYYY-MM"
+  const targetMonth = selectedMonth || new Date().toISOString().slice(0, 7);
 
   const fetchEntries = useCallback(async () => {
     if (!drivers || drivers.length === 0) {
@@ -16,16 +16,22 @@ export function useAllEntries(drivers, selectedMonth) {
       return;
     }
 
-    if (!selectedMonth) return;
-
     setLoading(true);
 
     try {
-      // 1 ÚNICA REQUISIÇÃO para buscar todos os lançamentos do mês em todas as subcoleções "entries"
+      const driverIdsSet = new Set(drivers.map((d) => d.id));
+
+      // Calcula o último dia do mês para não travar em meses com 28, 30 ou 31 dias
+      const [year, month] = targetMonth.split("-").map(Number);
+      const lastDayNumber = new Date(year, month, 0).getDate();
+      const startDate = `${targetMonth}-01`;
+      const endDate = `${targetMonth}-${String(lastDayNumber).padStart(2, "0")}`;
+
+      // 1 ÚNICA REQUISIÇÃO com collectionGroup
       const entriesQuery = query(
         collectionGroup(db, "entries"),
-        where("date", ">=", `${selectedMonth}-01`),
-        where("date", "<=", `${selectedMonth}-31`),
+        where("date", ">=", startDate),
+        where("date", "<=", endDate),
         orderBy("date", "desc")
       );
 
@@ -33,18 +39,16 @@ export function useAllEntries(drivers, selectedMonth) {
 
       const result = {};
 
-      // Inicializa o objeto para todos os motoristas
+      // Inicializa o array de cada motorista
       drivers.forEach((driver) => {
         result[driver.id] = [];
       });
 
-      // Agrupa os resultados pelo ID do motorista (extraído do caminho do documento)
+      // Agrupa os lançamentos pelo ID do motorista pai
       snapshot.docs.forEach((docSnap) => {
-        // Exemplo do path do documento: "drivers/ID_DO_MOTORISTA/entries/ID_DO_LANCAMENTO"
         const pathSegments = docSnap.ref.path.split("/");
-        const driverId = pathSegments[1]; // Pega o ID do motorista pai
+        const driverId = pathSegments[1];
 
-        // Apenas inclui se o motorista pertencer à lista ativa da empresa
         if (driverIdsSet.has(driverId)) {
           if (!result[driverId]) {
             result[driverId] = [];
@@ -62,7 +66,7 @@ export function useAllEntries(drivers, selectedMonth) {
     } finally {
       setLoading(false);
     }
-  }, [drivers, selectedMonth]);
+  }, [drivers, targetMonth]);
 
   useEffect(() => {
     fetchEntries();

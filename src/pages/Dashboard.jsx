@@ -26,8 +26,8 @@ export default function Dashboard() {
   const [loadingUser, setLoadingUser] = useState(true)
 
   // Só ativa a busca de motoristas e lançamentos quando o perfil do usuário for totalmente carregado
-  const { drivers, loading: loadingDrivers } = useDrivers()
-  const { entriesByDriver, loading: loadingEntries } = useAllEntries(drivers)
+  const { drivers = [], loading: loadingDrivers } = useDrivers()
+  const { entriesByDriver = {}, loading: loadingEntries } = useAllEntries(drivers)
   
   const [empresaFilter, setEmpresaFilter] = useState('Todas')
   const [search, setSearch] = useState('')
@@ -39,20 +39,28 @@ export default function Dashboard() {
   // Régua controlada diretamente por HORAS (padrão 40 horas)
   const [alertaHoras, setAlertaHoras] = useState(40)
 
-  // 1. Busca primeiro o perfil do usuário logado
+  // 1. Busca primeiro o perfil do usuário logado de forma segura
   useEffect(() => {
-    async function fetchUserRole() {
-      const currentUser = auth.currentUser
+    let isMounted = true
+
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (!currentUser) {
-        navigate('/login')
+        if (isMounted) {
+          setLoadingUser(false)
+          navigate('/login')
+        }
         return
       }
+
       try {
         const docRef = doc(db, 'users', currentUser.uid)
         const docSnap = await getDoc(docRef)
+
+        if (!isMounted) return
+
         if (docSnap.exists()) {
           const userData = docSnap.data()
-          setUserRole(userData.role)
+          setUserRole(userData.role || 'cliente')
           
           if (userData.role !== 'supervisor' && userData.empresa) {
             setUserEmpresa(userData.empresa)
@@ -69,10 +77,14 @@ export default function Dashboard() {
       } catch (error) {
         console.error('Erro ao buscar o perfil do usuário no painel:', error)
       } finally {
-        if (loadingUser) setLoadingUser(false)
+        if (isMounted) setLoadingUser(false)
       }
+    })
+
+    return () => {
+      isMounted = false
+      unsubscribe()
     }
-    fetchUserRole()
   }, [navigate])
 
   const formatarParaRelogio = (decimal) => {
@@ -83,7 +95,7 @@ export default function Dashboard() {
   }
 
   const computed = useMemo(() => {
-    if (loadingUser) return []
+    if (loadingUser || !Array.isArray(drivers)) return []
 
     const driversFilteredByUserEmpresa = drivers.filter((driver) => {
       if (userRole === 'supervisor' || userEmpresa === 'Todas') return true
@@ -123,7 +135,7 @@ export default function Dashboard() {
     })
   }, [drivers, entriesByDriver, userRole, userEmpresa, loadingUser])
 
-  // Filtra de acordo com a barra de busca, filtro de empresa e ESCOPO DE HORAS EXTRAS selecionado
+  // Filtra de acordo com a busca, filtro de empresa e escopo de horas extras
   const filtered = useMemo(() => {
     return computed
       .filter((c) => empresaFilter === 'Todas' || c.driver.empresa === empresaFilter)
@@ -136,28 +148,29 @@ export default function Dashboard() {
       .filter((c) => {
         if (!search.trim()) return true
         const q = search.toLowerCase()
-        return (
-          c.driver.name.toLowerCase().includes(q) ||
-          (c.driver.matricula || '').toLowerCase().includes(q)
-        )
+        const nameMatch = (c.driver.name || '').toLowerCase().includes(q)
+        const matriculaMatch = (c.driver.matricula || '').toLowerCase().includes(q)
+        return nameMatch || matriculaMatch
       })
   }, [computed, empresaFilter, search, exportScope])
 
-  // Ordena a lista resultante em ordem alfabética de A-Z pelo nome do motorista
+  // Ordena a lista em ordem alfabética de A-Z
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => a.driver.name.localeCompare(b.driver.name))
+    return [...filtered].sort((a, b) => 
+      (a.driver.name || '').localeCompare(b.driver.name || '')
+    )
   }, [filtered])
   
-  // Limitação inteligente para exibir apenas 10 cards/linhas por vez na UI do Dashboard
+  // Limitação para exibir os 10 primeiros
   const top10Exibidos = useMemo(() => {
     return sorted.slice(0, 10)
   }, [sorted])
 
-  // Filtragem dos motoristas que atingiram ou passaram o limite de horas da régua
+  // Filtragem dos motoristas que atingiram/ultrapassaram a régua
   const alertedDrivers = useMemo(() => {
     return filtered
       .filter((c) => c.totalHours >= alertaHoras)
-      .sort((a, b) => a.driver.name.localeCompare(b.driver.name))
+      .sort((a, b) => (a.driver.name || '').localeCompare(b.driver.name || ''))
   }, [filtered, alertaHoras])
 
   // --- MODELAGEM DOS GRÁFICOS APEXCHARTS ---
@@ -258,6 +271,8 @@ export default function Dashboard() {
       } else {
         await exportPDF(rows, label)
       }
+    } catch (err) {
+      console.error('Erro ao exportar arquivo:', err)
     } finally {
       setExporting(false)
     }
@@ -393,7 +408,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Botões Otimizados com Ícones Corrigidos e Alinhados */}
+        {/* Botões Otimizados */}
         <div className="flex gap-2 lg:ml-auto flex-wrap">
           <button
             onClick={() => handleExport('excel')}
@@ -449,22 +464,19 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* MODO CARDS */}
         {!loading && top10Exibidos.length > 0 && viewMode === 'cards' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {top10Exibidos.map(({ driver, totalHours, totalHoursStr, total75Str, total100Str, usage }) => (
+            {top10Exibidos.map((item) => (
               <DriverCard 
-                key={driver.id} 
-                driver={driver} 
-                totalHours={totalHours} 
-                totalHoursStr={totalHoursStr}
-                total75Str={total75Str}
-                total100Str={total100Str}
-                usage={usage} 
+                key={item.driver.id} 
+                {...item} 
               />
             ))}
           </div>
         )}
 
+        {/* MODO LISTA */}
         {!loading && top10Exibidos.length > 0 && viewMode === 'list' && (
           <div className="bg-white rounded-xl shadow-card overflow-x-auto border border-line">
             <table className="w-full text-sm">
@@ -515,7 +527,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* LINHA DIVISORA DO GRAPHIC BI */}
+      {/* LINHA DIVISORA */}
       <hr className="border-line" />
 
       {/* SEÇÃO INFERIOR: GRÁFICOS E METRICAS */}
@@ -525,7 +537,6 @@ export default function Dashboard() {
             Métricas de Desempenho e Indicadores
           </h2>
 
-          {/* KPIs Dinâmicos baseados no Escopo */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-line p-4 rounded-xl shadow-sm flex flex-col justify-between">
               <span className="text-xs font-semibold text-slate uppercase tracking-wider block">Total Frota</span>
@@ -558,10 +569,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Renderização Integrada de Gráficos ApexCharts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
-            {/* Gráfico de Rosca - Proporções de Risco */}
             <div className="bg-white border border-line p-5 rounded-xl shadow-sm flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-bold text-ink uppercase tracking-wide">Visão Geral de Conformidade</h3>
@@ -578,7 +587,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Gráfico de Barras - Top 5 Acúmulo */}
             <div className="bg-white border border-line p-5 rounded-xl shadow-sm flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-bold text-ink uppercase tracking-wide">Top 5 Condutores — Maior Volume</h3>

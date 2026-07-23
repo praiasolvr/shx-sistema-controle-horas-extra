@@ -3,9 +3,18 @@ import RouteProgress from './RouteProgress'
 import EmpresaBadge from './EmpresaBadge'
 import { STATUS_META } from '../utils/hours'
 
-export default function DriverCard({ driver, totalHoursStr, total75Str = '00:00', total100Str = '00:00', usage }) {
+export default function DriverCard({ 
+  driver = {}, 
+  totalHoursStr = '00:00', 
+  total75Str = '00:00', 
+  total100Str = '00:00', 
+  usage = { percent: 0, status: 'ok' } 
+}) {
   const navigate = useNavigate()
-  const meta = STATUS_META[usage.status] || STATUS_META.ok
+
+  // Evita erro caso usage venha nulo ou sem status
+  const safeUsage = usage || { percent: 0, status: 'ok' }
+  const meta = STATUS_META[safeUsage.status] || STATUS_META.ok
 
   return (
     <article className="bg-white rounded-xl border border-line p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between group">
@@ -13,17 +22,17 @@ export default function DriverCard({ driver, totalHoursStr, total75Str = '00:00'
         {/* Cabeçalho do Card */}
         <div className="flex items-start justify-between gap-2 mb-4">
           <div className="max-w-[70%]">
-            <h3 className="font-display font-bold text-base text-ink tracking-tight truncate" title={driver.name}>
-              {driver.name}
+            <h3 className="font-display font-bold text-base text-ink tracking-tight truncate" title={driver?.name || 'Motorista'}>
+              {driver?.name || 'Sem nome'}
             </h3>
             <p className="text-xs text-slate mt-0.5">
-              Matrícula: <span className="font-mono bg-cloud px-1.5 py-0.5 rounded text-slate-700">{driver.matricula || 'N/D'}</span>
+              Matrícula: <span className="font-mono bg-cloud px-1.5 py-0.5 rounded text-slate-700">{driver?.matricula || 'N/D'}</span>
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
-            <EmpresaBadge empresa={driver.empresa} />
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${meta.bg || 'bg-cloud'} ${meta.text || 'text-slate'} ${meta.border || 'border-line'}`}>
-              {meta.label}
+            <EmpresaBadge empresa={driver?.empresa} />
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${meta?.bg || 'bg-cloud'} ${meta?.text || 'text-slate'} ${meta?.border || 'border-line'}`}>
+              {meta?.label || 'Normal'}
             </span>
           </div>
         </div>
@@ -32,11 +41,11 @@ export default function DriverCard({ driver, totalHoursStr, total75Str = '00:00'
         <div className="mb-5 bg-cloud/40 rounded-lg p-3 border border-line/40">
           <div className="flex justify-between items-center text-xs mb-1.5">
             <span className="font-medium text-slate-600">Uso do teto mensal</span>
-            <span className={`font-mono font-bold ${meta.text}`}>
-              {Math.round(usage.percent)}%
+            <span className={`font-mono font-bold ${meta?.text || 'text-slate'}`}>
+              {Math.round(safeUsage.percent)}%
             </span>
           </div>
-          <RouteProgress percent={usage.percent} status={usage.status} compact />
+          <RouteProgress percent={safeUsage.percent} status={safeUsage.status} compact />
         </div>
       </div>
 
@@ -60,8 +69,9 @@ export default function DriverCard({ driver, totalHoursStr, total75Str = '00:00'
 
         {/* Botão de Ver Detalhes */}
         <button
-          onClick={() => navigate(`/motoristas/${driver.id}`)}
-          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-line bg-white hover:bg-[#040a18] hover:border-[#040a18] hover:text-white text-slate-700 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-sm"
+          onClick={() => driver?.id && navigate(`/motoristas/${driver.id}`)}
+          disabled={!driver?.id}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-line bg-white hover:bg-[#040a18] hover:border-[#040a18] hover:text-white text-slate-700 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span>Ver Detalhes</span>
           <svg 
