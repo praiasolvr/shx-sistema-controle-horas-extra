@@ -1,7 +1,7 @@
-import { formatHours, monthLabel, filterEntriesByMonth } from './hours'
+import { monthLabel, filterEntriesByMonth } from './hours'
 import { STATUS_LABELS } from './constants'
 
-// Função auxiliar precisa para converter decimais em HH:MM de relógio
+// Função auxiliar para converter decimais em HH:MM de relógio
 function formatarParaRelogio(decimal) {
   if (decimal === undefined || decimal === null || decimal < 0) return '00:00'
   const totalMinutos = Math.round(decimal * 60)
@@ -19,7 +19,6 @@ function formatarDataBr(dateStr) {
 }
 
 function buildRows(computedList, entriesByDriver) {
-  // 1. Mapeamos todos os lançamentos ativos para descobrir quais datas REAIS foram lançadas
   const datasLancadasSet = new Set()
   
   computedList.forEach(({ driver }) => {
@@ -32,12 +31,9 @@ function buildRows(computedList, entriesByDriver) {
     })
   })
 
-  // Ordena as datas cronologicamente
   const datasOrdenadas = Array.from(datasLancadasSet).sort()
 
-  // 2. Montando as linhas
-  const rows = computedList.map(({ driver, totalHoursStr, usage }) => {
-    // Dados Cadastrais à esquerda
+  const rows = computedList.map(({ driver, totalHoursStr }) => {
     const row = {
       Nome: driver.name,
       Matrícula: driver.matricula || '',
@@ -48,7 +44,6 @@ function buildRows(computedList, entriesByDriver) {
     const rawEntries = entriesByDriver[driver.id] || []
     const monthEntries = filterEntriesByMonth(rawEntries)
 
-    // 3. Preenche as colunas para cada data com lançamento
     datasOrdenadas.forEach(dataStr => {
       const dataFormatada = formatarDataBr(dataStr)
       const colTotal = `${dataFormatada} - Total`
@@ -76,7 +71,6 @@ function buildRows(computedList, entriesByDriver) {
         row[col75] = formatarParaRelogio(min75 / 60)
         row[col100] = formatarParaRelogio(min100 / 60)
 
-        // Monta os detalhes de forma amigável: "Horário inicial às Horário final | Observação"
         const horario = (lancamento.startTime && lancamento.endTime) 
           ? `${lancamento.startTime} às ${lancamento.endTime}`
           : ''
@@ -84,7 +78,6 @@ function buildRows(computedList, entriesByDriver) {
         
         row[colDetails] = [horario, obs].filter(Boolean).join(' | ') || '-'
       } else {
-        // Se este motorista específico não trabalhou no dia
         row[colTotal] = '00:00'
         row[col75] = '00:00'
         row[col100] = '00:00'
@@ -101,13 +94,15 @@ function buildRows(computedList, entriesByDriver) {
   }
 }
 
+// -------------------------------------------------------------
+// EXPORTAÇÃO EXCEL
+// -------------------------------------------------------------
 export async function exportExcel(computedList, filterLabel = 'Todas', entriesByDriver = {}) {
   const XLSX = await import('xlsx')
   
   const { rows, totalColunasDeDias } = buildRows(computedList, entriesByDriver)
   const ws = XLSX.utils.json_to_sheet(rows)
 
-  // Configuração de tamanho das colunas do Excel
   const baseCols = [
     { wch: 24 }, // Nome
     { wch: 12 }, // Matrícula
@@ -115,13 +110,12 @@ export async function exportExcel(computedList, filterLabel = 'Todas', entriesBy
     { wch: 18 }, // Total Geral (HH:MM)
   ]
   
-  // 4 colunas por dia lançado (Total, 75%, 100% e Detalhes)
   const dayCols = []
   for (let i = 0; i < totalColunasDeDias; i++) {
     dayCols.push({ wch: 12 }) // Total
     dayCols.push({ wch: 12 }) // 75%
     dayCols.push({ wch: 12 }) // 100%
-    dayCols.push({ wch: 28 }) // Detalhes/Obs (coluna um pouco mais larga para caber o texto)
+    dayCols.push({ wch: 28 }) // Detalhes/Obs
   }
   
   ws['!cols'] = [...baseCols, ...dayCols]
@@ -133,34 +127,115 @@ export async function exportExcel(computedList, filterLabel = 'Todas', entriesBy
   XLSX.writeFile(wb, `horas-extra-${safeMonth}-${filterLabel}.xlsx`)
 }
 
+// -------------------------------------------------------------
+// EXPORTAÇÃO PDF APRIMORADA
+// -------------------------------------------------------------
 export async function exportPDF(computedList, filterLabel = 'Todas') {
   const jsPDFModule = await import('jspdf')
   const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default
   const autoTable = (await import('jspdf-autotable')).default
 
-  const docPdf = new jsPDF()
-  docPdf.setFontSize(14)
-  docPdf.text(`Relatório de Horas Extra — ${monthLabel()}`, 14, 16)
-  docPdf.setFontSize(10)
-  docPdf.setTextColor(100)
-  docPdf.text(`Filtro: ${filterLabel}`, 14, 22)
+  const docPdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  })
 
+  // Cabeçalho Corporativo
+  docPdf.setFillColor(18, 25, 43)
+  docPdf.rect(0, 0, 210, 24, 'F')
+
+  docPdf.setTextColor(255, 255, 255)
+  docPdf.setFontSize(14)
+  docPdf.setFont('helvetica', 'bold')
+  docPdf.text('RELATÓRIO DE MONITORAMENTO DE HORAS EXTRA', 14, 12)
+
+  docPdf.setFontSize(9)
+  docPdf.setFont('helvetica', 'normal')
+  docPdf.text(`Competência: ${monthLabel()}  |  Filtro: ${filterLabel}`, 14, 18)
+
+  const dataEmissao = new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  docPdf.setFontSize(8)
+  docPdf.setTextColor(200, 200, 200)
+  docPdf.text(`Emitido em: ${dataEmissao}`, 196, 18, { align: 'right' })
+
+  // Tabela com AutoTable
   autoTable(docPdf, {
     startY: 28,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [18, 25, 43] },
-    head: [['Nome', 'Matrícula', 'Empresa', 'Horas']],
+    head: [[
+      'Nome do Motorista', 
+      'Matrícula', 
+      'Empresa', 
+      'Realizado', 
+      'Limite', 
+      'Uso (%)', 
+      'Status'
+    ]],
     body: computedList.map(({ driver, totalHoursStr, usage }) => [
       driver.name,
       driver.matricula || '-',
       driver.empresa || '-',
       totalHoursStr,
-      formatarParaRelogio(driver.maxHours),
+      formatarParaRelogio(driver.maxHours || 60),
       `${usage.percent.toFixed(0)}%`,
       STATUS_LABELS[usage.status] || usage.status
-    ])
+    ]),
+    theme: 'striped',
+    styles: {
+      fontSize: 8.5,
+      cellPadding: 2.5,
+      textColor: [40, 40, 40],
+      valign: 'middle'
+    },
+    headStyles: {
+      fillColor: [18, 25, 43],
+      textColor: [255, 255, 255],
+      fontSize: 8.5,
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    columnStyles: {
+      0: { cellWidth: 50, fontStyle: 'bold' },
+      1: { cellWidth: 22, halign: 'center' },
+      2: { cellWidth: 32 },
+      3: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+      4: { cellWidth: 20, halign: 'center' },
+      5: { cellWidth: 20, halign: 'center' },
+      6: { cellWidth: 24, halign: 'center' }
+    },
+    didParseCell: function (data) {
+      if (data.section === 'body' && data.column.index === 6) {
+        const statusText = String(data.cell.raw).toLowerCase()
+        if (statusText.includes('excedido') || statusText.includes('crítico')) {
+          data.cell.styles.textColor = [220, 38, 38]
+          data.cell.styles.fontStyle = 'bold'
+        } else if (statusText.includes('atencao') || statusText.includes('alerta')) {
+          data.cell.styles.textColor = [217, 119, 6]
+          data.cell.styles.fontStyle = 'bold'
+        } else {
+          data.cell.styles.textColor = [16, 185, 129]
+        }
+      }
+    },
+    didDrawPage: function (data) {
+      const pageCount = docPdf.internal.getNumberOfPages()
+      docPdf.setFontSize(8)
+      docPdf.setTextColor(130, 130, 130)
+      
+      docPdf.setDrawColor(220, 220, 220)
+      docPdf.line(14, 285, 196, 285)
+      
+      docPdf.text('Documento Interno · Controle de Ponto e Horas Extras', 14, 289)
+      docPdf.text(`Página ${data.pageNumber} de ${pageCount}`, 196, 289, { align: 'right' })
+    }
   })
 
   const safeMonth = monthLabel().replace(/\s+/g, '-')
-  docPdf.save(`horas-extra-${safeMonth}-${filterLabel}.pdf`)
+  docPdf.save(`relatorio-horas-extra-${safeMonth}-${filterLabel}.pdf`)
 }
