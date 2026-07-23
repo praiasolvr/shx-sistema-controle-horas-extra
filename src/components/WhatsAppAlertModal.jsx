@@ -5,10 +5,11 @@ const DEFAULT_TEMPLATE = 'MOTORISTAS QUE ESTÃO ATINGINDO O LIMITE:'
 
 export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
   const [messageHeader, setMessageHeader] = useState(DEFAULT_TEMPLATE)
-  // Estado para armazenar o número customizado que receberá o alerta
+  // Tipo de envio: 'phone' (Número específico) ou 'group' (Grupo/Geral)
+  const [sendType, setSendType] = useState('phone')
   const [targetPhone, setTargetPhone] = useState('')
 
-  // Função local e precisa para formatar o decimal em formato relógio (HH:MM)
+  // Formata o decimal em formato relógio (HH:MM)
   const formatarParaRelogio = (decimal) => {
     if (!decimal || decimal <= 0) return '00:00'
     const h = Math.floor(decimal)
@@ -16,7 +17,7 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   }
 
-  // Constrói o texto completo unindo o título + a listagem dos motoristas com formato corrigido
+  // Constrói o texto completo do relatório
   const fullMessage = useMemo(() => {
     let text = `${messageHeader}\n\n`
 
@@ -27,7 +28,6 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
         const matriculaStr = driver.matricula ? ` · #${driver.matricula}` : ''
         const horasFormatadas = formatarParaRelogio(totalHours)
         
-        // Exemplo de saída: • *Nome do Motorista* (Empresa · #Matricula): *60:20h*
         text += `• *${driver.name}* (${driver.empresa || 'Sem Empresa'}${matriculaStr}): *${horasFormatadas}h*\n`
       })
     }
@@ -35,34 +35,75 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
     return text.trim()
   }, [messageHeader, alertedDrivers])
 
-  // Cria o link final apontando para o número customizado escolhido
+  // Cria o link dinâmico dependendo do modo selecionado
   const whatsappLink = useMemo(() => {
+    const encodedMessage = encodeURIComponent(fullMessage)
+
+    if (sendType === 'group') {
+      // Link universal do WhatsApp (Abre a lista de contatos/grupos para você escolher para quem mandar)
+      return `https://api.whatsapp.com/send?text=${encodedMessage}`
+    }
+
+    // Modo número individual
     if (!targetPhone) return null
-    // Remove qualquer caractere que não seja número antes de enviar para a função
     const cleanPhone = targetPhone.replace(/\D/g, '')
-    return buildWhatsAppLink(cleanPhone, fullMessage)
-  }, [targetPhone, fullMessage])
+    
+    // Se você usa o utilitário buildWhatsAppLink:
+    return buildWhatsAppLink ? buildWhatsAppLink(cleanPhone, fullMessage) : `https://wa.me/${cleanPhone}?text=${encodedMessage}`
+  }, [sendType, targetPhone, fullMessage])
 
   return (
     <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 px-4">
       <div className="bg-white rounded-xl shadow-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="font-display text-2xl font-semibold mb-1">Enviar Relatório por WhatsApp</h2>
         <p className="text-sm text-slate mb-4">
-          Digite o número de telefone de destino (ex: Gerente ou Operação) para disparar a lista condensada dos motoristas em alerta.
+          Escolha como deseja compartilhar a lista dos motoristas em alerta.
         </p>
 
-        {/* Campo para escolher qual número vai receber */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate mb-1">WhatsApp de Destino</label>
-          <input
-            type="text"
-            placeholder="Ex: 27999999999"
-            value={targetPhone}
-            onChange={(e) => setTargetPhone(e.target.value)}
-            className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 font-mono"
-          />
-          <p className="text-[11px] text-slate mt-1">Insira com o DDD (somente números).</p>
+        {/* Alternador de Destino (Número x Grupo) */}
+        <div className="flex bg-cloud p-1 rounded-lg border border-line mb-4">
+          <button
+            type="button"
+            onClick={() => setSendType('phone')}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
+              sendType === 'phone'
+                ? 'bg-white text-ink shadow-sm'
+                : 'text-slate hover:text-ink'
+            }`}
+          >
+            Número Específico
+          </button>
+          <button
+            type="button"
+            onClick={() => setSendType('group')}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition ${
+              sendType === 'group'
+                ? 'bg-white text-ink shadow-sm'
+                : 'text-slate hover:text-ink'
+            }`}
+          >
+            Grupo / Outra Conversa
+          </button>
         </div>
+
+        {/* Campo para número de telefone (apenas se sendType === 'phone') */}
+        {sendType === 'phone' ? (
+          <div className="mb-4 animate-in fade-in duration-150">
+            <label className="block text-sm font-medium text-slate mb-1">WhatsApp de Destino</label>
+            <input
+              type="text"
+              placeholder="Ex: 27999999999"
+              value={targetPhone}
+              onChange={(e) => setTargetPhone(e.target.value)}
+              className="w-full rounded-lg border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 font-mono"
+            />
+            <p className="text-[11px] text-slate mt-1">Insira com o DDD (somente números).</p>
+          </div>
+        ) : (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200/60 rounded-lg text-xs text-amber-800 animate-in fade-in duration-150">
+            💡 Ao clicar em enviar, o WhatsApp abrirá sua lista de conversas para você selecionar o <strong>Grupo</strong> ou contato desejado.
+          </div>
+        )}
 
         {/* Campo para editar o título/texto fixo de cabeçalho */}
         <div className="mb-4">
@@ -75,7 +116,7 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
           />
         </div>
 
-        {/* Pré-visualização da mensagem completa que vai ser enviada */}
+        {/* Pré-visualização da mensagem */}
         <div className="mb-5">
           <label className="block text-sm font-medium text-slate mb-1">Pré-visualização do Relatório</label>
           <div className="w-full rounded-lg bg-cloud/40 border border-line px-3 py-3 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto text-slate">
@@ -83,7 +124,7 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
           </div>
         </div>
 
-        {/* Botão de envio unificado */}
+        {/* Botões de Ação */}
         <div className="flex flex-col gap-2 pt-2 border-t border-line">
           {whatsappLink ? (
             <a
@@ -92,7 +133,9 @@ export default function WhatsAppAlertModal({ alertedDrivers, onClose }) {
               rel="noopener noreferrer"
               className="w-full bg-signal text-white text-center font-medium py-2.5 rounded-lg hover:bg-signal/90 transition block"
             >
-              Enviar Lista Completa via WhatsApp
+              {sendType === 'group'
+                ? 'Abrir WhatsApp e Escolher Grupo'
+                : 'Enviar para Número Especificado'}
             </a>
           ) : (
             <button
