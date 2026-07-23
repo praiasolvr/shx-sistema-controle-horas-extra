@@ -1,21 +1,42 @@
 import { useState } from 'react'
 import { EMPRESAS } from '../utils/constants'
 
-export default function DriverFormModal({ initial, onClose, onSave }) {
+export default function DriverFormModal({ initial, userRole, userEmpresa, onClose, onSave }) {
   const [name, setName] = useState(initial?.name || '')
   const [matricula, setMatricula] = useState(initial?.matricula || '')
-  const [empresa, setEmpresa] = useState(initial?.empresa || EMPRESAS[0])
+  
+  // Define o valor inicial da empresa respeitando o perfil:
+  // Se for supervisor, usa o do motorista (se editando) ou a primeira empresa da lista.
+  // Se for cliente, usa obrigatoriamente a empresa vinculada ao perfil logado (userEmpresa).
+  const defaultEmpresa = userRole === 'supervisor' 
+    ? (initial?.empresa || EMPRESAS[0]) 
+    : (userEmpresa || initial?.empresa || EMPRESAS[0])
+
+  const [empresa, setEmpresa] = useState(defaultEmpresa)
   const [role, setRole] = useState(initial?.role || '')
   const [phone, setPhone] = useState(initial?.phone || '')
   const [maxHours, setMaxHours] = useState(initial?.maxHours ?? 20)
   const [saving, setSaving] = useState(false)
+  
   const isEdit = Boolean(initial)
+  const isSupervisor = userRole === 'supervisor'
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
-    await onSave({ name, matricula, empresa, role, phone, maxHours })
+
+    // Se não for supervisor, força a empresa a ser sempre userEmpresa por segurança
+    const finalEmpresa = isSupervisor ? empresa : userEmpresa
+
+    await onSave({ 
+      name, 
+      matricula, 
+      empresa: finalEmpresa, 
+      role, 
+      phone, 
+      maxHours: Number(maxHours) 
+    })
     setSaving(false)
   }
 
@@ -48,25 +69,30 @@ export default function DriverFormModal({ initial, onClose, onSave }) {
                 placeholder="Ex: 00123"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-slate mb-1">Empresa</label>
-              <select
-                value={empresa}
-                onChange={(e) => setEmpresa(e.target.value)}
-                className="w-full rounded-lg border border-line px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-ink/20"
-              >
-                {EMPRESAS.map((e) => (
-                  <option key={e} value={e}>
-                    {e}
-                  </option>
-                ))}
-              </select>
+              {isSupervisor ? (
+                <select
+                  value={empresa}
+                  onChange={(e) => setEmpresa(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-ink/20"
+                >
+                  {EMPRESAS.map((e) => (
+                    <option key={e} value={e}>
+                      {e}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={userEmpresa || empresa}
+                  disabled
+                  className="w-full rounded-lg border border-line px-3 py-2 bg-cloud/50 text-slate font-medium cursor-not-allowed focus:outline-none"
+                />
+              )}
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            
-            
           </div>
 
           <div>
