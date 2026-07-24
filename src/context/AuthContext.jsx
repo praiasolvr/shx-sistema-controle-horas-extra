@@ -4,35 +4,47 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore' // Importamos para ler o documento do usuário
-import { auth, db } from '../firebase' // Importe o 'db' do seu arquivo de configuração do Firebase
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from '../firebase'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null) // Novo estado para guardar o papel (role) e empresa
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser(firebaseUser)
-        
         try {
-          // Busca os dados adicionais (role/empresa) na coleção 'users'
+          // Busca os dados do perfil na coleção 'users'
           const docRef = doc(db, 'users', firebaseUser.uid)
           const docSnap = await getDoc(docRef)
           
           if (docSnap.exists()) {
-            setProfile(docSnap.data())
+            const userData = docSnap.data()
+
+            // ⛔ BLOQUEIO: Se o usuário estiver inativo, encerra a sessão antes de montar o estado
+            if (userData.active === false) {
+              await signOut(auth)
+              setUser(null)
+              setProfile(null)
+              setError('Esta conta está desativada. Entre em contato com o administrador.')
+              setLoading(false)
+              return
+            }
+
+            setUser(firebaseUser)
+            setProfile(userData)
           } else {
-            // Caso o usuário exista no Auth mas não tenha sido criado no Firestore ainda
-            setProfile({ role: 'supervisor', empresa: 'Não Associada' })
+            setUser(firebaseUser)
+            setProfile({ role: 'supervisor', empresa: 'Não Associada', active: true })
           }
         } catch (err) {
-          console.error('Erro ao buscar perfil do usuário no Firestore:', err)
+          console.error('Erro ao verificar perfil do usuário:', err)
+          setUser(null)
           setProfile(null)
         }
       } else {
@@ -45,10 +57,29 @@ export function AuthProvider({ children }) {
     return unsubscribe
   }, [])
 
+  // FUNÇÃO DE LOGIN
   async function login(email, password) {
     setError(null)
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      // 1. Tenta autenticar no Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      
+      // 2. Consulta imediatamente a coleção 'users' no Firestore
+      const docRef = doc(db, 'users', userCredential.user.uid)
+      const docSnap = await getDoc(docRef)
+
+      // 3. Se a conta existir e estiver desativada (active === false)
+      if (docSnap.exists() && docSnap.data().active === false) {
+        // Desconecta instantaneamente do Firebase Auth
+        await signOut(auth)
+        setUser(null)
+        setProfile(null)
+        
+        // Define a mensagem de erro específica para exibir na Tela de Login
+        setError('Esta conta está desativada. Entre em contato com o administrador.')
+        return false
+      }
+
       return true
     } catch (err) {
       setError(traduzErro(err.code))
@@ -58,11 +89,12 @@ export function AuthProvider({ children }) {
 
   async function logout() {
     await signOut(auth)
+    setUser(null)
+    setProfile(null)
   }
 
-  // Adicionamos 'profile' no value do Provider para que qualquer componente do app tenha acesso
   return (
-    <AuthContext.Provider value={{ user, profile, loading, error, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, error, setError, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

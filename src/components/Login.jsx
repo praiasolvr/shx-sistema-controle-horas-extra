@@ -1,27 +1,35 @@
-import { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, ShieldCheck, Clock, CheckCircle2 } from 'lucide-react'
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import {
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ArrowRight,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function Login() {
-  const { login, error } = useAuth()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const { login, error } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setSubmitting(true)
-    await login(email, password)
-    setSubmitting(false)
+    e.preventDefault();
+    setSubmitting(true);
+    await login(email, password);
+    setSubmitting(false);
   }
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 font-sans antialiased">
-      
       {/* SEÇÃO ESQUERDA - PAINEL INSTITUCIONAL (Oculto em telas de celular) */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 text-white flex-col justify-between p-12 relative overflow-hidden">
-        
         {/* Luzes / Gradientes de fundo */}
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
@@ -53,16 +61,20 @@ export default function Login() {
           </h1>
 
           <p className="text-slate-300 text-base leading-relaxed">
-            Acompanhe lançamentos, controle limites diários de 75% e 100% e gere relatórios consolidados com facilidade.
+            Acompanhe lançamentos, controle limites diários de 75% e 100% e gere
+            relatórios consolidados com facilidade.
           </p>
 
           <div className="space-y-3 pt-2">
             {[
               "Cálculo automático de fechamento mensal",
               "Relatórios divididos por empresa e matrícula",
-              "Auditoria visual e controle centralizado"
+              "Auditoria visual e controle centralizado",
             ].map((item, idx) => (
-              <div key={idx} className="flex items-center gap-3 text-sm text-slate-200">
+              <div
+                key={idx}
+                className="flex items-center gap-3 text-sm text-slate-200"
+              >
                 <CheckCircle2 className="h-5 w-5 text-blue-400 shrink-0" />
                 <span>{item}</span>
               </div>
@@ -79,7 +91,6 @@ export default function Login() {
       {/* SEÇÃO DIREITA - FORMULÁRIO DE LOGIN */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md space-y-8">
-          
           {/* Cabeçalho do Formulário */}
           <div className="text-center lg:text-left space-y-2">
             <div className="lg:hidden flex items-center justify-center gap-3 mb-6">
@@ -106,13 +117,14 @@ export default function Login() {
           {error && (
             <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 animate-in fade-in duration-200">
               <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-              <p className="text-xs sm:text-sm font-medium text-red-700">{error}</p>
+              <p className="text-xs sm:text-sm font-medium text-red-700">
+                {error}
+              </p>
             </div>
           )}
 
           {/* Formulário */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            
             {/* Campo E-mail */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">
@@ -143,7 +155,7 @@ export default function Login() {
                   <Lock className="h-5 w-5" />
                 </div>
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -155,7 +167,11 @@ export default function Login() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
                 </button>
               </div>
             </div>
@@ -183,13 +199,14 @@ export default function Login() {
           {/* Rodapé do Form */}
           <div className="pt-4 text-center border-t border-slate-200/60">
             <p className="text-xs text-slate-400">
-              Sistema de Acesso Restrito SHX. Em caso de dúvidas, contate o administrador.
+              Sistema de Acesso Restrito SHX. Em caso de dúvidas, contate o
+              administrador.
             </p>
           </div>
-
         </div>
       </div>
-
     </div>
-  )
+  );
 }
+
+

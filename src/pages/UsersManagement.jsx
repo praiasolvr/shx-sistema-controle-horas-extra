@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { db, auth } from '../firebase' 
-import { collection, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore'
+import { db } from '../firebase' 
+import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
 import { initializeApp, getApp, deleteApp } from 'firebase/app'
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth'
@@ -9,12 +9,12 @@ import { EMPRESAS } from '../utils/constants'
 import EmpresaBadge from '../components/EmpresaBadge'
 
 export default function UsersManagement() {
-  // ✅ Puxamos 'profile' que é onde a role/empresa estão no AuthContext
   const { user, profile, loading: authLoading } = useAuth()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [filterStatus, setFilterStatus] = useState('active') // 'active', 'inactive', 'all'
   const navigate = useNavigate()
 
   // Helpers de permissão
@@ -32,7 +32,6 @@ export default function UsersManagement() {
   const [empresa, setEmpresa] = useState('')
   const [password, setPassword] = useState('')
 
-  // Carrega a lista de usuários caso tenha acesso
   useEffect(() => {
     if (authLoading) return
 
@@ -77,7 +76,6 @@ export default function UsersManagement() {
       return
     }
 
-    // Trava no front: impedir que supervisor atribua privilégios administrativos
     if (!isAdmin && (role === 'supervisor' || role === 'admin')) {
       setError('Apenas Administradores podem conceder perfil de Supervisor ou Admin.')
       return
@@ -85,18 +83,20 @@ export default function UsersManagement() {
 
     try {
       if (isEditing) {
-        // Atualizar Usuário Existente no Firestore
+        // Atualizar Usuário Existente
         const userRef = doc(db, 'users', editingId)
         await updateDoc(userRef, {
           name: nome,
           email: email,
           matricula: matricula.trim(),
           role: role,
-          empresa: empresa
+          empresa: empresa,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user?.email || 'sistema'
         })
         setSuccess('Usuário atualizado com sucesso!')
       } else {
-        // Criar Novo Usuário no Firebase Auth usando App Secundário
+        // Criar Novo Usuário
         const currentConfig = getApp().options
         const secondaryApp = initializeApp(currentConfig, 'SecondaryAuth')
         const secondaryAuth = getAuth(secondaryApp)
@@ -108,14 +108,16 @@ export default function UsersManagement() {
         )
         const newUid = userCredential.user.uid
 
-        // Salvar no Firestore com ID idêntico
+        // Salva no Firestore com a flag active: true por padrão
         await setDoc(doc(db, 'users', newUid), {
           name: nome,
           email: email,
           matricula: matricula.trim(),
           role: role,
           empresa: empresa,
-          createdAt: new Date().toISOString()
+          active: true,
+          createdAt: new Date().toISOString(),
+          createdBy: user?.email || 'sistema'
         })
 
         await deleteApp(secondaryApp)
@@ -144,16 +146,42 @@ export default function UsersManagement() {
     setPassword('')
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Tem certeza que deseja excluir este usuário do banco?')) return
+  // 🔄 Alternar Status (Ativar / Desativar)
+  async function handleToggleStatus(userData) {
+    // Trata indefinido como ativo (padrão antigo)
+    const isCurrentlyActive = userData.active !== false 
+    const actionText = isCurrentlyActive ? 'desativar' : 'reativar'
+
+    // Impede que o próprio usuário desative seu acesso
+    if (user?.uid === userData.id) {
+      setError('Você não pode desativar seu próprio usuário.')
+      return
+    }
+
+    // Trava para impedir supervisor de desativar admin
+    if (!isAdmin && userData.role === 'admin') {
+      setError('Apenas Administradores podem alterar a conta de um Administrador.')
+      return
+    }
+
+    if (!window.confirm(`Tem certeza que deseja ${actionText} a conta de ${userData.name}?`)) return
+
     setError('')
     setSuccess('')
+    
     try {
-      await deleteDoc(doc(db, 'users', id))
-      setSuccess('Usuário removido com sucesso!')
+      const userRef = doc(db, 'users', userData.id)
+      await updateDoc(userRef, {
+        active: !isCurrentlyActive,
+        disabledAt: !isCurrentlyActive ? new Date().toISOString() : null,
+        disabledBy: !isCurrentlyActive ? user?.email : null
+      })
+
+      setSuccess(`Usuário ${isCurrentlyActive ? 'desativado' : 'reativado'} com sucesso!`)
       fetchUsers()
     } catch (err) {
-      setError('Erro ao excluir usuário.')
+      console.error(err)
+      setError('Erro ao alterar status do usuário: ' + err.message)
     }
   }
 
@@ -168,6 +196,14 @@ export default function UsersManagement() {
     setPassword('')
   }
 
+  // Filtragem local dos usuários conforme a aba selecionada
+  const filteredUsers = users.filter((u) => {
+    const isActive = u.active !== false
+    if (filterStatus === 'active') return isActive
+    if (filterStatus === 'inactive') return !isActive
+    return true
+  })
+
   if (authLoading || loading) {
     return (
       <div className="p-8 text-center text-slate-500 font-medium">
@@ -176,7 +212,6 @@ export default function UsersManagement() {
     )
   }
 
-  // Verificação de permissão de acesso à página
   if (!hasAccess) {
     return (
       <div className="p-8 max-w-md mx-auto text-center">
@@ -277,7 +312,6 @@ export default function UsersManagement() {
                 <option value="lancador">Lançador (Lança e edita horas)</option>
                 <option value="rh">RH (Visualiza relatórios e exporta)</option>
                 
-                {/* Opção de Supervisor apenas para Admin */}
                 {isAdmin ? (
                   <option value="supervisor">Supervisor (Permissão total)</option>
                 ) : (
@@ -286,17 +320,10 @@ export default function UsersManagement() {
                   </option>
                 )}
 
-                {/* Opção de Admin apenas para Admin */}
                 {isAdmin && (
                   <option value="admin">Administrador (Acesso global)</option>
                 )}
               </select>
-              
-              {!isAdmin && (
-                <p className="text-[11px] text-slate-400 mt-1">
-                  * Apenas administradores podem atribuir a função de Supervisor ou Admin.
-                </p>
-              )}
             </div>
 
             <div>
@@ -337,9 +364,34 @@ export default function UsersManagement() {
 
         {/* Tabela de Usuários */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-slate-200">
-            <h2 className="font-semibold text-lg">Usuários Cadastrados ({users.length})</h2>
+          
+          {/* Header da Tabela com Filtro de Status */}
+          <div className="px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="font-semibold text-lg">Usuários Cadastrados ({filteredUsers.length})</h2>
+            
+            {/* Seletor de Status (Ativos / Inativos / Todos) */}
+            <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-medium self-start sm:self-auto">
+              <button
+                onClick={() => setFilterStatus('active')}
+                className={`px-3 py-1 rounded-md transition ${filterStatus === 'active' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                Ativos
+              </button>
+              <button
+                onClick={() => setFilterStatus('inactive')}
+                className={`px-3 py-1 rounded-md transition ${filterStatus === 'inactive' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                Inativos
+              </button>
+              <button
+                onClick={() => setFilterStatus('all')}
+                className={`px-3 py-1 rounded-md transition ${filterStatus === 'all' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                Todos
+              </button>
+            </div>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -350,55 +402,82 @@ export default function UsersManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-5 py-3">
-                      <p className="font-medium text-slate-800">{u.name || 'Sem nome'}</p>
-                      <div className="text-xs text-slate-400 space-y-0.5">
-                        <p>{u.email}</p>
-                        {u.matricula && (
-                          <p className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded w-fit">
-                            Matrícula: {u.matricula}
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
-                          u.role === 'admin'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                            : u.role === 'supervisor' 
-                            ? 'bg-red-50 text-red-700 border border-red-200' 
-                            : u.role === 'rh' 
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-green-50 text-green-700 border border-green-200'
-                        }`}>
-                          {u.role === 'admin' ? 'Admin' : u.role === 'supervisor' ? 'Supervisor' : u.role === 'rh' ? 'RH' : 'Lançador'}
-                        </span>
-                        {u.empresa && (
-                          <EmpresaBadge empresa={u.empresa} />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right space-x-2">
-                      <button
-                        onClick={() => handleStartEdit(u)}
-                        className="text-xs font-medium text-blue-600 hover:underline"
-                      >
-                        Editar
-                      </button>
-                      {auth.currentUser?.uid !== u.id && (
-                        <button
-                          onClick={() => handleDelete(u.id)}
-                          className="text-xs font-medium text-red-600 hover:underline"
-                        >
-                          Excluir
-                        </button>
-                      )}
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="px-5 py-6 text-center text-slate-400">
+                      Nenhum usuário encontrado para este filtro.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredUsers.map((u) => {
+                    const isUserActive = u.active !== false
+                    return (
+                      <tr 
+                        key={u.id} 
+                        className={`hover:bg-slate-50/60 transition-colors ${!isUserActive ? 'bg-slate-50/80' : ''}`}
+                      >
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <p className={`font-medium ${isUserActive ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                              {u.name || 'Sem nome'}
+                            </p>
+                            {!isUserActive && (
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold bg-slate-200 text-slate-600 rounded">
+                                Inativo
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400 space-y-0.5">
+                            <p>{u.email}</p>
+                            {u.matricula && (
+                              <p className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded w-fit">
+                                Matrícula: {u.matricula}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
+                              u.role === 'admin'
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : u.role === 'supervisor' 
+                                ? 'bg-red-50 text-red-700 border border-red-200' 
+                                : u.role === 'rh' 
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-green-50 text-green-700 border border-green-200'
+                            }`}>
+                              {u.role === 'admin' ? 'Admin' : u.role === 'supervisor' ? 'Supervisor' : u.role === 'rh' ? 'RH' : 'Lançador'}
+                            </span>
+                            {u.empresa && (
+                              <EmpresaBadge empresa={u.empresa} />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right space-x-2">
+                          <button
+                            onClick={() => handleStartEdit(u)}
+                            className="text-xs font-medium text-blue-600 hover:underline"
+                          >
+                            Editar
+                          </button>
+
+                          {/* Botão de Desativar/Reativar (Substitui a Exclusão) */}
+                          {user?.uid !== u.id && (
+                            <button
+                              onClick={() => handleToggleStatus(u)}
+                              className={`text-xs font-medium hover:underline ${
+                                isUserActive ? 'text-amber-600' : 'text-emerald-600'
+                              }`}
+                            >
+                              {isUserActive ? 'Desativar' : 'Reativar'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
