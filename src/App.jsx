@@ -9,6 +9,7 @@ import LaunchHours from './pages/LaunchHours'
 import History from './pages/History'
 import Backups from './pages/Backups'
 import UserManagement from './pages/UsersManagement'
+import Reports from './pages/Reports'
 
 // Componente para proteger rotas exclusivas do Administrador
 import { useEffect, useState } from 'react'
@@ -92,6 +93,7 @@ function AppShell() {
           <Route path="/lancamentos" element={<History />} />
           <Route path="/motoristas" element={<DriverList />} />
           <Route path="/motoristas/:id" element={<DriverDetail />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/usuarios" element={<UserManagement />} />
           
           {/* Rota protegida apenas para Admin */}
