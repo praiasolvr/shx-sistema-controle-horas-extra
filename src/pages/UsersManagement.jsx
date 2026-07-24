@@ -9,13 +9,18 @@ import { EMPRESAS } from '../utils/constants'
 import EmpresaBadge from '../components/EmpresaBadge'
 
 export default function UsersManagement() {
-  // ✅ Puxamos 'profile' que é onde a role/empresa estão no seu AuthContext
+  // ✅ Puxamos 'profile' que é onde a role/empresa estão no AuthContext
   const { user, profile, loading: authLoading } = useAuth()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const navigate = useNavigate()
+
+  // Helpers de permissão
+  const isAdmin = profile?.role === 'admin'
+  const isSupervisor = profile?.role === 'supervisor'
+  const hasAccess = isAdmin || isSupervisor
 
   // Estados do Formulário
   const [isEditing, setIsEditing] = useState(false)
@@ -27,17 +32,16 @@ export default function UsersManagement() {
   const [empresa, setEmpresa] = useState('')
   const [password, setPassword] = useState('')
 
-  // Carrega a lista de usuários baseando-se no 'profile'
+  // Carrega a lista de usuários caso tenha acesso
   useEffect(() => {
-    // Se o AuthContext ainda estiver carregando, aguarda
     if (authLoading) return
 
-    if (profile?.role === 'supervisor') {
+    if (hasAccess) {
       fetchUsers()
     } else {
       setLoading(false)
     }
-  }, [profile, authLoading])
+  }, [profile, authLoading, hasAccess])
 
   async function fetchUsers() {
     setLoading(true)
@@ -70,6 +74,12 @@ export default function UsersManagement() {
 
     if (!isEditing && password.length < 6) {
       setError('A senha deve ter no mínimo 6 caracteres.')
+      return
+    }
+
+    // Trava no front: impedir que supervisor atribua privilégios administrativos
+    if (!isAdmin && (role === 'supervisor' || role === 'admin')) {
+      setError('Apenas Administradores podem conceder perfil de Supervisor ou Admin.')
       return
     }
 
@@ -166,12 +176,12 @@ export default function UsersManagement() {
     )
   }
 
-  // ✅ Verificação corrigida para usar 'profile.role'
-  if (profile?.role !== 'supervisor') {
+  // Verificação de permissão de acesso à página
+  if (!hasAccess) {
     return (
       <div className="p-8 max-w-md mx-auto text-center">
         <p className="text-red-500 font-semibold mb-4">
-          Acesso Restrito. Apenas supervisores podem acessar esta página.
+          Acesso Restrito. Apenas administradores e supervisores podem acessar esta página.
         </p>
         <button
           onClick={() => navigate('/')}
@@ -262,12 +272,31 @@ export default function UsersManagement() {
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
               >
                 <option value="lancador">Lançador (Lança e edita horas)</option>
-                <option value="supervisor">Supervisor (Permissão total)</option>
                 <option value="rh">RH (Visualiza relatórios e exporta)</option>
+                
+                {/* Opção de Supervisor apenas para Admin */}
+                {isAdmin ? (
+                  <option value="supervisor">Supervisor (Permissão total)</option>
+                ) : (
+                  <option value="supervisor" disabled>
+                    Supervisor (Exclusivo para Administrador)
+                  </option>
+                )}
+
+                {/* Opção de Admin apenas para Admin */}
+                {isAdmin && (
+                  <option value="admin">Administrador (Acesso global)</option>
+                )}
               </select>
+              
+              {!isAdmin && (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  * Apenas administradores podem atribuir a função de Supervisor ou Admin.
+                </p>
+              )}
             </div>
 
             <div>
@@ -277,7 +306,7 @@ export default function UsersManagement() {
                 onChange={(e) => setEmpresa(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none"
               >
-                <option value="">Sem empresa designada (Vê todas / Supervisor global)</option>
+                <option value="">Sem empresa designada (Vê todas / Gestor global)</option>
                 {EMPRESAS && EMPRESAS.map((emp) => (
                   <option key={emp} value={emp}>
                     {emp}
@@ -337,13 +366,15 @@ export default function UsersManagement() {
                     <td className="px-5 py-3">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
-                          u.role === 'supervisor' 
+                          u.role === 'admin'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : u.role === 'supervisor' 
                             ? 'bg-red-50 text-red-700 border border-red-200' 
                             : u.role === 'rh' 
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : 'bg-green-50 text-green-700 border border-green-200'
                         }`}>
-                          {u.role === 'supervisor' ? 'Supervisor' : u.role === 'rh' ? 'RH' : 'Lançador'}
+                          {u.role === 'admin' ? 'Admin' : u.role === 'supervisor' ? 'Supervisor' : u.role === 'rh' ? 'RH' : 'Lançador'}
                         </span>
                         {u.empresa && (
                           <EmpresaBadge empresa={u.empresa} />

@@ -1,129 +1,69 @@
-import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import { useIdleTimer } from './hooks/useIdleTimer'
-import { Menu, AlertTriangle, LogOut, ShieldCheck } from 'lucide-react'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import DriverList from './pages/DriverList'
 import DriverDetail from './pages/DriverDetail'
 import LaunchHours from './pages/LaunchHours'
-import UsersManagement from './pages/UsersManagement'
-import Reports from './pages/Reports'
+import History from './pages/History'
+import Backups from './pages/Backups'
+import UserManagement from './pages/UsersManagement'
 
-// Rota protegida por perfil
-function AdminRoute({ children }) {
-  const { profile, loading } = useAuth()
+// Componente para proteger rotas exclusivas do Administrador
+import { useEffect, useState } from 'react'
+import { doc, getDoc } from 'firebase/firestore'
+import { db } from './firebase'
 
-  if (loading) {
+function ProtectedAdminRoute({ children }) {
+  const { user, loading: authLoading } = useAuth()
+  const [role, setRole] = useState(null)
+  const [checkingRole, setCheckingRole] = useState(true)
+
+  useEffect(() => {
+    async function fetchUserRole() {
+      if (user?.uid) {
+        try {
+          const docSnap = await getDoc(doc(db, 'users', user.uid))
+          if (docSnap.exists()) {
+            setRole(docSnap.data().role)
+          }
+        } catch (error) {
+          console.error('Erro ao verificar permissão de admin:', error)
+        } finally {
+          setCheckingRole(false)
+        }
+      } else {
+        setCheckingRole(false)
+      }
+    }
+
+    if (!authLoading) {
+      fetchUserRole()
+    }
+  }, [user, authLoading])
+
+  if (authLoading || checkingRole) {
     return (
-      <div className="p-8 text-center text-slate font-medium">
-        Verificando permissões...
+      <div className="p-8 text-center text-slate">
+        <p>Verificando permissões...</p>
       </div>
     )
   }
 
-  if (profile?.role !== 'supervisor') {
-    return <Navigate to="/" replace />
+  // Permite acesso APENAS se a role do Firestore for 'admin'
+  if (role !== 'admin') {
+    return (
+      <div className="p-8 text-center max-w-md mx-auto mt-20 bg-white rounded-xl shadow-card border border-line">
+        <h2 className="text-xl font-semibold text-red-600 mb-2">Acesso Restrito</h2>
+        <p className="text-sm text-slate">
+          Esta área é reservada exclusivamente para o perfil Administrador.
+        </p>
+      </div>
+    )
   }
 
   return children
-}
-
-// Componente interno que lida com o Timer e o Layout principal
-function AuthenticatedApp() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  // O timer só executa aqui dentro porque o usuário já está logado
-  const { isWarningOpen, countdown, resetTimer, handleForceLogout } = useIdleTimer(
-  15 * 60 * 1000, 
-  60 * 1000
-)
-
-  return (
-    <div className="flex min-h-screen bg-cloud relative">
-      <Sidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 bg-ink text-white px-4 py-3 shadow-sm">
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            aria-label="Abrir menu"
-            className="p-1 -ml-1 text-white/80 hover:text-white transition-colors"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-          <h1 className="font-display text-lg font-semibold leading-none tracking-wide">TRÁFEGO</h1>
-        </header>
-
-        <main className="flex-1 min-w-0">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/lancar-horas" element={<LaunchHours />} />
-            <Route path="/motoristas" element={<DriverList />} />
-            <Route path="/motoristas/:id" element={<DriverDetail />} />
-            <Route path="/reports" element={<Reports />} />
-            
-            <Route
-              path="/usuarios"
-              element={
-                <AdminRoute>
-                  <UsersManagement />
-                </AdminRoute>
-              }
-            />
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-      </div>
-
-      {/* Modal de inatividade */}
-      {isWarningOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 text-center space-y-5">
-            
-            <div className="w-14 h-14 bg-amber-50 border border-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
-              <AlertTriangle className="h-7 w-7" />
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold text-slate-800">Sua sessão está inativa</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Por motivos de segurança e otimização do sistema, sua sessão será encerrada automaticamente em:
-              </p>
-            </div>
-
-            <div className="bg-amber-50/80 border border-amber-200/60 rounded-xl py-3 px-4 flex items-center justify-center gap-2">
-              <span className="text-3xl font-black text-amber-600 font-mono">
-                {String(countdown).padStart(2, '0')}s
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <button
-                onClick={handleForceLogout}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors"
-              >
-                <LogOut className="h-4 w-4 text-slate-500" />
-                <span>Sair Agora</span>
-              </button>
-
-              <button
-                onClick={resetTimer}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md transition-all"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span>Continuar Conectado</span>
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-    </div>
-  )
 }
 
 function AppShell() {
@@ -132,16 +72,41 @@ function AppShell() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-cloud">
-        <p className="text-slate font-medium">Carregando…</p>
+        <p className="text-slate">Carregando…</p>
       </div>
     )
   }
 
+  // Se não estiver autenticado, exibe a tela de login
   if (!user) {
     return <Login />
   }
 
-  return <AuthenticatedApp />
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen bg-cloud">
+      <Sidebar />
+      <main className="flex-1 min-w-0">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/lancar-horas" element={<LaunchHours />} />
+          <Route path="/lancamentos" element={<History />} />
+          <Route path="/motoristas" element={<DriverList />} />
+          <Route path="/motoristas/:id" element={<DriverDetail />} />
+          <Route path="/usuarios" element={<UserManagement />} />
+          
+          {/* Rota protegida apenas para Admin */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedAdminRoute>
+                <Backups />
+              </ProtectedAdminRoute>
+            }
+          />
+        </Routes>
+      </main>
+    </div>
+  )
 }
 
 export default function App() {

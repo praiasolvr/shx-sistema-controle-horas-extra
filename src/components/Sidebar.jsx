@@ -3,13 +3,23 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { LayoutDashboard, FileClock, Users, UserCog, LogOut, FileText, X } from "lucide-react";
+import {
+  LayoutDashboard,
+  FileClock,
+  Users,
+  UserCog,
+  LogOut,
+  FileText,
+  X,
+  ShieldCheck,
+  DatabaseBackup
+} from "lucide-react";
 
 export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const { user, logout } = useAuth();
   const [role, setRole] = useState(null);
 
-  // Buscar o perfil do usuário logado para saber se exibe o menu de controle
+  // Buscar o perfil do usuário logado para saber se exibe os menus restritos
   useEffect(() => {
     async function getUserRole() {
       if (user?.uid) {
@@ -19,7 +29,10 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
             setRole(docSnap.data().role);
           }
         } catch (error) {
-          console.error("Erro ao buscar permissões do usuário no sidebar:", error);
+          console.error(
+            "Erro ao buscar permissões do usuário no sidebar:",
+            error,
+          );
         }
       }
     }
@@ -30,13 +43,15 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const linkClass = ({ isActive }) =>
     `relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition pl-5 ${
       isActive
-        ? "bg-white/10 text-[#6BFE9C]" 
+        ? "bg-white/10 text-[#6BFE9C]"
         : "text-white/60 hover:text-white hover:bg-white/5"
     }`;
 
   // Elemento da barrinha verde que aparece apenas no link ativo
-  const activeIndicator = (isActive) => 
-    isActive && <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#6BFE9C] rounded-r" />;
+  const activeIndicator = (isActive) =>
+    isActive && (
+      <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#6BFE9C] rounded-r" />
+    );
 
   return (
     <>
@@ -101,6 +116,18 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
               </>
             )}
           </NavLink>
+           {/* O link "Admin" (Backups, etc) continua sendo exclusivo do Admin */}
+          {role === "admin" && (
+            <NavLink to="/admin" className={linkClass} onClick={onClose}>
+              {({ isActive }) => (
+                <>
+                  {activeIndicator(isActive)}
+                  <DatabaseBackup className="w-5 h-5" />
+                  <span>Backups</span>
+                </>
+              )}
+            </NavLink>
+          )}
 
           <NavLink to="/reports" className={linkClass} onClick={onClose}>
             {({ isActive }) => (
@@ -112,16 +139,18 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
             )}
           </NavLink>
 
-          {/* EXCLUSIVO: Exibir Gestão de Usuários apenas se o logado for Supervisor */}
-          {role === "supervisor" && (
+                 {/* Exibir Gestão de Usuários para Admin e Supervisor */}
+          {(role === "admin" || role === "supervisor") && (
             <NavLink to="/usuarios" className={linkClass} onClick={onClose}>
               {({ isActive }) => (
                 <>
                   {activeIndicator(isActive)}
-                  {/* Mantive o text-amber original aqui caso não queira sobrescrever, 
-                      mas se quiser que fique verde também, basta remover a classe 'text-amber' abaixo */}
-                  <UserCog className={`w-5 h-5 ${isActive ? "text-[#6BFE9C]" : "text-amber"}`} />
-                  <span className={isActive ? "text-[#6BFE9C]" : "text-amber"}>Gerenciar Usuários</span>
+                  <UserCog
+                    className={`w-5 h-5 ${isActive ? "text-[#6BFE9C]" : "text-amber"}`}
+                  />
+                  <span className={isActive ? "text-[#6BFE9C]" : "text-amber"}>
+                    Gerenciar Usuários
+                  </span>
                 </>
               )}
             </NavLink>
@@ -137,7 +166,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
             className="w-full flex flex-row items-center gap-2 px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/5 hover:text-white transition"
           >
             <LogOut className="w-5 h-5 shrink-0" />
-            <span>Sair</span>  
+            <span>Sair</span>
           </button>
         </div>
       </aside>
